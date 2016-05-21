@@ -62,8 +62,6 @@ class ProfilerControllerTest extends \PHPUnit_Framework_TestCase
                 if ('found' == $token) {
                     return new Profile($token);
                 }
-
-                return;
             }))
         ;
 
@@ -125,6 +123,7 @@ class ProfilerControllerTest extends \PHPUnit_Framework_TestCase
                 'tokens' => $tokens,
                 'ip' => '127.0.0.1',
                 'method' => 'GET',
+                'status_code' => null,
                 'url' => 'http://example.com/',
                 'start' => null,
                 'end' => null,

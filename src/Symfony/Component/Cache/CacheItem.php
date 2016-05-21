@@ -12,6 +12,7 @@
 namespace Symfony\Component\Cache;
 
 use Psr\Cache\CacheItemInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Cache\Exception\InvalidArgumentException;
 
 /**
@@ -19,18 +20,16 @@ use Symfony\Component\Cache\Exception\InvalidArgumentException;
  */
 final class CacheItem implements CacheItemInterface
 {
+    /**
+     * @internal
+     */
+    const CAST_PREFIX = "\0Symfony\Component\Cache\CacheItem\0";
+
     private $key;
     private $value;
     private $isHit;
-    private $lifetime;
+    private $expiry;
     private $defaultLifetime;
-
-    public function __clone()
-    {
-        if (is_object($this->value)) {
-            $this->value = clone $this->value;
-        }
-    }
 
     /**
      * {@inheritdoc}
@@ -72,9 +71,9 @@ final class CacheItem implements CacheItemInterface
     public function expiresAt($expiration)
     {
         if (null === $expiration) {
-            $this->lifetime = $this->defaultLifetime;
+            $this->expiry = $this->defaultLifetime > 0 ? time() + $this->defaultLifetime : null;
         } elseif ($expiration instanceof \DateTimeInterface) {
-            $this->lifetime = $expiration->format('U') - time() ?: -1;
+            $this->expiry = (int) $expiration->format('U');
         } else {
             throw new InvalidArgumentException(sprintf('Expiration date must implement DateTimeInterface or be null, "%s" given', is_object($expiration) ? get_class($expiration) : gettype($expiration)));
         }
@@ -88,16 +87,55 @@ final class CacheItem implements CacheItemInterface
     public function expiresAfter($time)
     {
         if (null === $time) {
-            $this->lifetime = $this->defaultLifetime;
+            $this->expiry = $this->defaultLifetime > 0 ? time() + $this->defaultLifetime : null;
         } elseif ($time instanceof \DateInterval) {
-            $now = time();
-            $this->lifetime = \DateTime::createFromFormat('U', $now)->add($time)->format('U') - $now ?: -1;
+            $this->expiry = (int) \DateTime::createFromFormat('U', time())->add($time)->format('U');
         } elseif (is_int($time)) {
-            $this->lifetime = $time ?: -1;
+            $this->expiry = $time + time();
         } else {
             throw new InvalidArgumentException(sprintf('Expiration date must be an integer, a DateInterval or null, "%s" given', is_object($time) ? get_class($time) : gettype($time)));
         }
 
         return $this;
+    }
+
+    /**
+     * Validates a cache key according to PSR-6.
+     *
+     * @param string $key The key to validate.
+     *
+     * @throws InvalidArgumentException When $key is not valid.
+     */
+    public static function validateKey($key)
+    {
+        if (!is_string($key)) {
+            throw new InvalidArgumentException(sprintf('Cache key must be string, "%s" given', is_object($key) ? get_class($key) : gettype($key)));
+        }
+        if (!isset($key[0])) {
+            throw new InvalidArgumentException('Cache key length must be greater than zero');
+        }
+        if (isset($key[strcspn($key, '{}()/\@:')])) {
+            throw new InvalidArgumentException(sprintf('Cache key "%s" contains reserved characters {}()/\@:', $key));
+        }
+    }
+
+    /**
+     * Internal logging helper.
+     *
+     * @internal
+     */
+    public static function log(LoggerInterface $logger = null, $message, $context = array())
+    {
+        if ($logger) {
+            $logger->warning($message, $context);
+        } else {
+            $replace = array();
+            foreach ($context as $k => $v) {
+                if (is_scalar($v)) {
+                    $replace['{'.$k.'}'] = $v;
+                }
+            }
+            @trigger_error(strtr($message, $replace), E_USER_WARNING);
+        }
     }
 }

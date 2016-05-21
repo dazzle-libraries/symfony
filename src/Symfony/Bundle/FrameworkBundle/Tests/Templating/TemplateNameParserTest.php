@@ -43,30 +43,34 @@ class TemplateNameParserTest extends TestCase
     }
 
     /**
-     * @dataProvider getLogicalNameToTemplateProvider
+     * @dataProvider parseProvider
      */
-    public function testParse($name, $ref)
+    public function testParse($name, $logicalName, $path, $ref)
     {
         $template = $this->parser->parse($name);
 
-        $this->assertEquals($template->getLogicalName(), $ref->getLogicalName());
-        $this->assertEquals($template->getLogicalName(), $name);
+        $this->assertSame($ref->getLogicalName(), $template->getLogicalName());
+        $this->assertSame($logicalName, $template->getLogicalName());
+        $this->assertSame($path, $template->getPath());
     }
 
-    public function getLogicalNameToTemplateProvider()
+    public function parseProvider()
     {
         return array(
-            array('FooBundle:Post:index.html.php', new TemplateReference('FooBundle', 'Post', 'index', 'html', 'php')),
-            array('FooBundle:Post:index.html.twig', new TemplateReference('FooBundle', 'Post', 'index', 'html', 'twig')),
-            array('FooBundle:Post:index.xml.php', new TemplateReference('FooBundle', 'Post', 'index', 'xml', 'php')),
-            array('SensioFooBundle:Post:index.html.php', new TemplateReference('SensioFooBundle', 'Post', 'index', 'html', 'php')),
-            array('SensioCmsFooBundle:Post:index.html.php', new TemplateReference('SensioCmsFooBundle', 'Post', 'index', 'html', 'php')),
-            array(':Post:index.html.php', new TemplateReference('', 'Post', 'index', 'html', 'php')),
-            array('::index.html.php', new TemplateReference('', '', 'index', 'html', 'php')),
-            array('FooBundle:Post:foo.bar.index.html.php', new TemplateReference('FooBundle', 'Post', 'foo.bar.index', 'html', 'php')),
-            array('/path/to/section/name.php', new BaseTemplateReference('/path/to/section/name.php', 'php')),
-            array('name.twig', new BaseTemplateReference('name.twig', 'twig')),
-            array('name', new BaseTemplateReference('name')),
+            array('FooBundle:Post:index.html.php', 'FooBundle:Post:index.html.php', '@FooBundle/Resources/views/Post/index.html.php', new TemplateReference('FooBundle', 'Post', 'index', 'html', 'php')),
+            array('FooBundle:Post:index.html.twig', 'FooBundle:Post:index.html.twig', '@FooBundle/Resources/views/Post/index.html.twig', new TemplateReference('FooBundle', 'Post', 'index', 'html', 'twig')),
+            array('FooBundle:Post:index.xml.php', 'FooBundle:Post:index.xml.php', '@FooBundle/Resources/views/Post/index.xml.php', new TemplateReference('FooBundle', 'Post', 'index', 'xml', 'php')),
+            array('SensioFooBundle:Post:index.html.php', 'SensioFooBundle:Post:index.html.php', '@SensioFooBundle/Resources/views/Post/index.html.php', new TemplateReference('SensioFooBundle', 'Post', 'index', 'html', 'php')),
+            array('SensioCmsFooBundle:Post:index.html.php', 'SensioCmsFooBundle:Post:index.html.php', '@SensioCmsFooBundle/Resources/views/Post/index.html.php', new TemplateReference('SensioCmsFooBundle', 'Post', 'index', 'html', 'php')),
+            array(':Post:index.html.php', ':Post:index.html.php', 'views/Post/index.html.php', new TemplateReference('', 'Post', 'index', 'html', 'php')),
+            array('::index.html.php', '::index.html.php', 'views/index.html.php', new TemplateReference('', '', 'index', 'html', 'php')),
+            array('index.html.php', '::index.html.php', 'views/index.html.php', new TemplateReference('', '', 'index', 'html', 'php')),
+            array('FooBundle:Post:foo.bar.index.html.php', 'FooBundle:Post:foo.bar.index.html.php', '@FooBundle/Resources/views/Post/foo.bar.index.html.php', new TemplateReference('FooBundle', 'Post', 'foo.bar.index', 'html', 'php')),
+            array('@FooBundle/Resources/views/layout.html.twig', '@FooBundle/Resources/views/layout.html.twig', '@FooBundle/Resources/views/layout.html.twig', new BaseTemplateReference('@FooBundle/Resources/views/layout.html.twig', 'twig')),
+            array('@FooBundle/Foo/layout.html.twig', '@FooBundle/Foo/layout.html.twig', '@FooBundle/Foo/layout.html.twig', new BaseTemplateReference('@FooBundle/Foo/layout.html.twig', 'twig')),
+            array('name.twig', 'name.twig', 'name.twig', new BaseTemplateReference('name.twig', 'twig')),
+            array('name', 'name', 'name', new BaseTemplateReference('name')),
+            array('default/index.html.php', '::default/index.html.php', 'views/default/index.html.php', new TemplateReference(null, null, 'default/index', 'html', 'php')),
         );
     }
 
@@ -76,5 +80,44 @@ class TemplateNameParserTest extends TestCase
     public function testParseValidNameWithNotFoundBundle()
     {
         $this->parser->parse('BarBundle:Post:index.html.php');
+    }
+
+    /**
+     * @group legacy
+     * @dataProvider provideAbsolutePaths
+     */
+    public function testAbsolutePathsAreDeprecated($name, $logicalName, $path, $ref)
+    {
+        $deprecations = array();
+        set_error_handler(function ($type, $msg) use (&$deprecations) {
+            if (E_USER_DEPRECATED !== $type) {
+                restore_error_handler();
+
+                return call_user_func_array('PHPUnit_Util_ErrorHandler::handleError', func_get_args());
+            }
+
+            $deprecations[] = $msg;
+        });
+
+        $template = $this->parser->parse($name);
+
+        restore_error_handler();
+
+        $this->assertSame($ref->getLogicalName(), $template->getLogicalName());
+        $this->assertSame($logicalName, $template->getLogicalName());
+        $this->assertSame($path, $template->getPath());
+        $this->assertCount(1, $deprecations);
+        $this->assertContains('Absolute template path support is deprecated since Symfony 3.1 and will be removed in 4.0.', $deprecations[0]);
+    }
+
+    public function provideAbsolutePaths()
+    {
+        return array(
+            array('/path/to/section/index.html.php', '/path/to/section/index.html.php', '/path/to/section/index.html.php', new BaseTemplateReference('/path/to/section/index.html.php', 'php')),
+            array('C:\\path\\to\\section\\name.html.php', 'C:path/to/section/name.html.php', 'C:path/to/section/name.html.php', new BaseTemplateReference('C:path/to/section/name.html.php', 'php')),
+            array('C:\\path\\to\\section\\name:foo.html.php', 'C:path/to/section/name:foo.html.php', 'C:path/to/section/name:foo.html.php', new BaseTemplateReference('C:path/to/section/name:foo.html.php', 'php')),
+            array('\\path\\to\\section\\name.html.php', '/path/to/section/name.html.php', '/path/to/section/name.html.php', new BaseTemplateReference('/path/to/section/name.html.php', 'php')),
+            array('/path/to/section/name.php', '/path/to/section/name.php', '/path/to/section/name.php', new BaseTemplateReference('/path/to/section/name.php', 'php')),
+        );
     }
 }

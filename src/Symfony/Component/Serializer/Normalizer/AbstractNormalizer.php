@@ -17,13 +17,14 @@ use Symfony\Component\Serializer\Exception\RuntimeException;
 use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
 use Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
 use Symfony\Component\Serializer\NameConverter\NameConverterInterface;
+use Symfony\Component\Serializer\SerializerAwareInterface;
 
 /**
  * Normalizer implementation.
  *
  * @author Kévin Dunglas <dunglas@gmail.com>
  */
-abstract class AbstractNormalizer extends SerializerAwareNormalizer implements NormalizerInterface, DenormalizerInterface
+abstract class AbstractNormalizer extends SerializerAwareNormalizer implements NormalizerInterface, DenormalizerInterface, SerializerAwareInterface
 {
     const CIRCULAR_REFERENCE_LIMIT = 'circular_reference_limit';
     const OBJECT_TO_POPULATE = 'object_to_populate';
@@ -33,26 +34,32 @@ abstract class AbstractNormalizer extends SerializerAwareNormalizer implements N
      * @var int
      */
     protected $circularReferenceLimit = 1;
+
     /**
      * @var callable
      */
     protected $circularReferenceHandler;
+
     /**
      * @var ClassMetadataFactoryInterface|null
      */
     protected $classMetadataFactory;
+
     /**
      * @var NameConverterInterface|null
      */
     protected $nameConverter;
+
     /**
      * @var array
      */
     protected $callbacks = array();
+
     /**
      * @var array
      */
     protected $ignoredAttributes = array();
+
     /**
      * @var array
      */

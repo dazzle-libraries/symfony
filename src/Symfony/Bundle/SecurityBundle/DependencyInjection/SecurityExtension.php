@@ -14,14 +14,12 @@ namespace Symfony\Bundle\SecurityBundle\DependencyInjection;
 use Symfony\Bundle\SecurityBundle\DependencyInjection\Security\Factory\SecurityFactoryInterface;
 use Symfony\Bundle\SecurityBundle\DependencyInjection\Security\UserProvider\UserProviderFactoryInterface;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
-use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\DefinitionDecorator;
 use Symfony\Component\DependencyInjection\Alias;
 use Symfony\Component\HttpKernel\DependencyInjection\Extension;
 use Symfony\Component\DependencyInjection\Loader\XmlFileLoader;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Reference;
-use Symfony\Component\DependencyInjection\Parameter;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\Security\Core\Authorization\ExpressionLanguage;
 
@@ -67,6 +65,10 @@ class SecurityExtension extends Extension
         $loader->load('templating_twig.xml');
         $loader->load('collectors.xml');
         $loader->load('guard.xml');
+
+        if ($container->hasParameter('kernel.debug') && $container->getParameter('kernel.debug')) {
+            $loader->load('security_debug.xml');
+        }
 
         if (!class_exists('Symfony\Component\ExpressionLanguage\ExpressionLanguage')) {
             $container->removeDefinition('security.expression_language');

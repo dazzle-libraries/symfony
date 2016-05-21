@@ -47,12 +47,12 @@ class LdapFactory implements UserProviderFactoryInterface
     {
         $node
             ->children()
-                ->scalarNode('service')->isRequired()->cannotBeEmpty()->end()
+                ->scalarNode('service')->isRequired()->cannotBeEmpty()->defaultValue('ldap')->end()
                 ->scalarNode('base_dn')->isRequired()->cannotBeEmpty()->end()
                 ->scalarNode('search_dn')->end()
                 ->scalarNode('search_password')->end()
                 ->arrayNode('default_roles')
-                    ->beforeNormalization()->ifString()->then(function($v) { return preg_split('/\s*,\s*/', $v); })->end()
+                    ->beforeNormalization()->ifString()->then(function ($v) { return preg_split('/\s*,\s*/', $v); })->end()
                     ->requiresAtLeastOneElement()
                     ->prototype('scalar')->end()
                 ->end()

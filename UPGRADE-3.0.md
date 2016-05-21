@@ -234,13 +234,13 @@ UPGRADE FROM 2.x to 3.0
 ### Form
 
  * The `getBlockPrefix()` method was added to the `FormTypeInterface` in replacement of
-   the `getName()` method which has been has been removed.
+   the `getName()` method which has been removed.
 
  * The `configureOptions()` method was added to the `FormTypeInterface` in replacement
    of the `setDefaultOptions()` method which has been removed.
 
  * The `getBlockPrefix()` method was added to the `ResolvedFormTypeInterface` in
-   replacement of the `getName()` method which has been has been removed.
+   replacement of the `getName()` method which has been removed.
 
  * The option `options` of the `CollectionType` has been removed in favor
    of the `entry_options` option.
@@ -403,7 +403,6 @@ UPGRADE FROM 2.x to 3.0
 
  * The `choice_list` option of `ChoiceType` was removed.
 
->>>>>>> 2.8
  * The option "precision" was renamed to "scale".
 
    Before:
@@ -780,6 +779,27 @@ UPGRADE FROM 2.x to 3.0
    interface.
    The `security.csrf.token_manager` should be used instead.
 
+ * The `validator.mapping.cache.apc` service has been removed in favor of the `validator.mapping.cache.doctrine.apc` one.
+
+ * The ability to pass `apc` as the `framework.validation.cache` configuration key value has been removed.
+   Use `validator.mapping.cache.doctrine.apc` instead:
+
+   Before:
+
+   ```yaml
+   framework:
+       validation:
+           cache: apc
+   ```
+
+   After:
+
+   ```yaml
+   framework:
+       validation:
+           cache: validator.mapping.cache.doctrine.apc
+   ```
+
 ### HttpKernel
 
  * The `Symfony\Component\HttpKernel\Log\LoggerInterface` has been removed in
@@ -919,9 +939,6 @@ UPGRADE FROM 2.x to 3.0
 
  * The `AbstractVoter` class was removed in favor of the new `Voter` class.
 
- * The `VoterInterface::supportsClass` and `supportsAttribute` methods were
-   removed from the interface.
-
  * The `Resources/` directory was moved to `Core/Resources/`
 
  * The `key` settings of `anonymous`, `remember_me` and `http_digest` are
@@ -1013,8 +1030,12 @@ UPGRADE FROM 2.x to 3.0
    ));
   ```
 
- * The `AbstractVoter::getSupportedAttributes()` and `AbstractVoter::getSupportedClasses()`
-   methods have been removed in favor of `AbstractVoter::supports()`.
+ * The `AbstractVoter` class was removed. Instead, extend the new `Voter` class,
+   introduced in 2.8, and move your voting logic to the to the `supports($attribute, $subject)`
+   and `voteOnAttribute($attribute, $object, TokenInterface $token)` methods.
+
+ * The `supportsClass` and `supportsAttribute` methods were
+   removed from the `VoterInterface` interface.
 
    Before:
 
@@ -1038,14 +1059,19 @@ UPGRADE FROM 2.x to 3.0
    After:
 
    ```php
-   class MyVoter extends AbstractVoter
+   use Symfony\Component\Security\Core\Authorization\Voter\Voter;
+
+   class MyVoter extends Voter
    {
        protected function supports($attribute, $object)
        {
            return $object instanceof Post && in_array($attribute, array('CREATE', 'EDIT'));
        }
 
-       // ...
+       protected function voteOnAttribute($attribute, $object, TokenInterface $token)
+       {
+           // Return true or false
+       }
    }
    ```
 
@@ -1081,6 +1107,16 @@ UPGRADE FROM 2.x to 3.0
 
  * The `supportsAttribute()` and `supportsClass()` methods of classes `AuthenticatedVoter`, `ExpressionVoter`
    and `RoleVoter` have been removed.
+
+ * The `intention` option was renamed to `csrf_token_id` for all the authentication listeners.
+
+ * The `csrf_provider` option was renamed to `csrf_token_generator` for all the authentication listeners.
+
+### SecurityBundle
+
+ * The `intention` firewall listener setting was renamed to `csrf_token_id`.
+
+ * The `csrf_provider` firewall listener setting was renamed to `csrf_token_generator`.
 
 ### Serializer
 
@@ -1735,4 +1771,19 @@ UPGRADE FROM 2.x to 3.0
 
 ### HttpFoundation
 
-* `Symfony\Component\HttpFoundation\Session\Flash\FlashBagInterface` no longer implements the `IteratorAggregate` interface. Use the `all()` method instead of iterating over the flash bag.
+ * `Symfony\Component\HttpFoundation\Session\Flash\FlashBagInterface` no longer implements the `IteratorAggregate` interface. Use the `all()` method instead of iterating over the flash bag.
+
+ * Removed the feature that allowed finding deep items in `ParameterBag::get()`.
+   This may affect you when getting parameters from the `Request` class:
+
+   Before:
+
+   ```php
+   $request->query->get('foo[bar]', null, true);
+   ```
+
+   After:
+
+   ```php
+   $request->query->get('foo')[bar];
+   ```

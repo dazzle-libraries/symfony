@@ -71,8 +71,6 @@ class Container implements ResettableContainerInterface
     private $underscoreMap = array('_' => '', '.' => '_', '\\' => '_');
 
     /**
-     * Constructor.
-     *
      * @param ParameterBagInterface $parameterBag A ParameterBagInterface instance
      */
     public function __construct(ParameterBagInterface $parameterBag = null)
@@ -167,6 +165,10 @@ class Container implements ResettableContainerInterface
 
         if ('service_container' === $id) {
             throw new InvalidArgumentException('You cannot set service "service_container".');
+        }
+
+        if (isset($this->aliases[$id])) {
+            unset($this->aliases[$id]);
         }
 
         $this->services[$id] = $service;
@@ -321,9 +323,8 @@ class Container implements ResettableContainerInterface
     public function getServiceIds()
     {
         $ids = array();
-        $r = new \ReflectionClass($this);
-        foreach ($r->getMethods() as $method) {
-            if (preg_match('/^get(.+)Service$/', $method->name, $match)) {
+        foreach (get_class_methods($this) as $method) {
+            if (preg_match('/^get(.+)Service$/', $method, $match)) {
                 $ids[] = self::underscore($match[1]);
             }
         }

@@ -259,7 +259,7 @@ class ErrorHandler
     public function throwAt($levels, $replace = false)
     {
         $prev = $this->thrownErrors;
-        $this->thrownErrors = E_ALL & ($levels | E_RECOVERABLE_ERROR | E_USER_ERROR) & ~E_USER_DEPRECATED & ~E_DEPRECATED;
+        $this->thrownErrors = ($levels | E_RECOVERABLE_ERROR | E_USER_ERROR) & ~E_USER_DEPRECATED & ~E_DEPRECATED;
         if (!$replace) {
             $this->thrownErrors |= $prev;
         }
@@ -494,7 +494,7 @@ class ErrorHandler
         }
         $type = $exception instanceof FatalErrorException ? $exception->getSeverity() : E_ERROR;
 
-        if ($this->loggedErrors & $type) {
+        if (($this->loggedErrors & $type) || $exception instanceof FatalThrowableError) {
             $e = array(
                 'type' => $type,
                 'file' => $exception->getFile(),
@@ -521,9 +521,9 @@ class ErrorHandler
             } else {
                 $message = 'Uncaught Exception: '.$exception->getMessage();
             }
-            if ($this->loggedErrors & $e['type']) {
-                $this->loggers[$e['type']][0]->log($this->loggers[$e['type']][1], $message, $e);
-            }
+        }
+        if ($this->loggedErrors & $type) {
+            $this->loggers[$type][0]->log($this->loggers[$type][1], $message, $e);
         }
         if ($exception instanceof FatalErrorException && !$exception instanceof OutOfMemoryException && $error) {
             foreach ($this->getFatalErrorHandlers() as $handler) {

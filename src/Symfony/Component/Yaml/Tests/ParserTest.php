@@ -422,59 +422,158 @@ EOF;
     public function testObjectSupportEnabled()
     {
         $input = <<<EOF
-foo: !!php/object:O:30:"Symfony\Component\Yaml\Tests\B":1:{s:1:"b";s:3:"foo";}
+foo: !php/object:O:30:"Symfony\Component\Yaml\Tests\B":1:{s:1:"b";s:3:"foo";}
+bar: 1
+EOF;
+        $this->assertEquals(array('foo' => new B(), 'bar' => 1), $this->parser->parse($input, Yaml::PARSE_OBJECT), '->parse() is able to parse objects');
+    }
+
+    /**
+     * @group legacy
+     */
+    public function testObjectSupportEnabledPassingTrue()
+    {
+        $input = <<<EOF
+foo: !php/object:O:30:"Symfony\Component\Yaml\Tests\B":1:{s:1:"b";s:3:"foo";}
 bar: 1
 EOF;
         $this->assertEquals(array('foo' => new B(), 'bar' => 1), $this->parser->parse($input, false, true), '->parse() is able to parse objects');
     }
 
-    public function testObjectSupportDisabledButNoExceptions()
+    /**
+     * @group legacy
+     */
+    public function testObjectSupportEnabledWithDeprecatedTag()
     {
         $input = <<<EOF
-foo: !!php/object:O:30:"Symfony\Tests\Component\Yaml\B":1:{s:1:"b";s:3:"foo";}
+foo: !!php/object:O:30:"Symfony\Component\Yaml\Tests\B":1:{s:1:"b";s:3:"foo";}
 bar: 1
 EOF;
+        $this->assertEquals(array('foo' => new B(), 'bar' => 1), $this->parser->parse($input, Yaml::PARSE_OBJECT), '->parse() is able to parse objects');
+    }
 
+    /**
+     * @dataProvider invalidDumpedObjectProvider
+     */
+    public function testObjectSupportDisabledButNoExceptions($input)
+    {
         $this->assertEquals(array('foo' => null, 'bar' => 1), $this->parser->parse($input), '->parse() does not parse objects');
     }
 
-    public function testObjectForMapEnabledWithMapping()
+    /**
+     * @dataProvider getObjectForMapTests
+     */
+    public function testObjectForMap($yaml, $expected)
     {
+        $this->assertEquals($expected, $this->parser->parse($yaml, Yaml::PARSE_OBJECT_FOR_MAP));
+    }
+
+    /**
+     * @group legacy
+     * @dataProvider getObjectForMapTests
+     */
+    public function testObjectForMapEnabledWithMappingUsingBooleanToggles($yaml, $expected)
+    {
+        $this->assertEquals($expected, $this->parser->parse($yaml, false, false, true));
+    }
+
+    public function getObjectForMapTests()
+    {
+        $tests = array();
+
         $yaml = <<<EOF
 foo:
     fiz: [cat]
 EOF;
-        $result = $this->parser->parse($yaml, false, false, true);
+        $expected = new \stdClass();
+        $expected->foo = new \stdClass();
+        $expected->foo->fiz = array('cat');
+        $tests['mapping'] = array($yaml, $expected);
 
-        $this->assertInstanceOf('stdClass', $result);
-        $this->assertInstanceOf('stdClass', $result->foo);
-        $this->assertEquals(array('cat'), $result->foo->fiz);
-    }
+        $yaml = '{ "foo": "bar", "fiz": "cat" }';
+        $expected = new \stdClass();
+        $expected->foo = 'bar';
+        $expected->fiz = 'cat';
+        $tests['inline-mapping'] = array($yaml, $expected);
 
-    public function testObjectForMapEnabledWithInlineMapping()
-    {
-        $result = $this->parser->parse('{ "foo": "bar", "fiz": "cat" }', false, false, true);
-
-        $this->assertInstanceOf('stdClass', $result);
-        $this->assertEquals('bar', $result->foo);
-        $this->assertEquals('cat', $result->fiz);
-    }
-
-    public function testObjectForMapIsAppliedAfterParsing()
-    {
+        $yaml = "foo: bar\nbaz: foobar";
         $expected = new \stdClass();
         $expected->foo = 'bar';
         $expected->baz = 'foobar';
+        $tests['object-for-map-is-applied-after-parsing'] = array($yaml, $expected);
 
-        $this->assertEquals($expected, $this->parser->parse("foo: bar\nbaz: foobar", false, false, true));
+        $yaml = <<<EOT
+array:
+  - key: one
+  - key: two
+EOT;
+        $expected = new \stdClass();
+        $expected->array = array();
+        $expected->array[0] = new \stdClass();
+        $expected->array[0]->key = 'one';
+        $expected->array[1] = new \stdClass();
+        $expected->array[1]->key = 'two';
+        $tests['nest-map-and-sequence'] = array($yaml, $expected);
+
+        $yaml = <<<YAML
+map:
+  1: one
+  2: two
+YAML;
+        $expected = new \stdClass();
+        $expected->map = new \stdClass();
+        $expected->map->{1} = 'one';
+        $expected->map->{2} = 'two';
+        $tests['numeric-keys'] = array($yaml, $expected);
+
+        $yaml = <<<YAML
+map:
+  0: one
+  1: two
+YAML;
+        $expected = new \stdClass();
+        $expected->map = new \stdClass();
+        $expected->map->{0} = 'one';
+        $expected->map->{1} = 'two';
+        $tests['zero-indexed-numeric-keys'] = array($yaml, $expected);
+
+        return $tests;
     }
 
     /**
+     * @dataProvider invalidDumpedObjectProvider
      * @expectedException \Symfony\Component\Yaml\Exception\ParseException
      */
-    public function testObjectsSupportDisabledWithExceptions()
+    public function testObjectsSupportDisabledWithExceptions($yaml)
     {
-        $this->parser->parse('foo: !!php/object:O:30:"Symfony\Tests\Component\Yaml\B":1:{s:1:"b";s:3:"foo";}', true, false);
+        $this->parser->parse($yaml, Yaml::PARSE_EXCEPTION_ON_INVALID_TYPE);
+    }
+
+    /**
+     * @group legacy
+     * @dataProvider invalidDumpedObjectProvider
+     * @expectedException \Symfony\Component\Yaml\Exception\ParseException
+     */
+    public function testObjectsSupportDisabledWithExceptionsUsingBooleanToggles($yaml)
+    {
+        $this->parser->parse($yaml, true);
+    }
+
+    public function invalidDumpedObjectProvider()
+    {
+        $yamlTag = <<<EOF
+foo: !!php/object:O:30:"Symfony\Tests\Component\Yaml\B":1:{s:1:"b";s:3:"foo";}
+bar: 1
+EOF;
+        $localTag = <<<EOF
+foo: !php/object:O:30:"Symfony\Tests\Component\Yaml\B":1:{s:1:"b";s:3:"foo";}
+bar: 1
+EOF;
+
+        return array(
+            'yaml-tag' => array($yamlTag),
+            'local-tag' => array($localTag),
+        );
     }
 
     /**
@@ -1019,6 +1118,87 @@ EOT
                 ,
             ),
             $this->parser->parse($yaml)
+        );
+    }
+
+    /**
+     * @dataProvider getBinaryData
+     */
+    public function testParseBinaryData($data)
+    {
+        $this->assertSame(array('data' => 'Hello world'), $this->parser->parse($data));
+    }
+
+    public function getBinaryData()
+    {
+        return array(
+            'enclosed with double quotes' => array('data: !!binary "SGVsbG8gd29ybGQ="'),
+            'enclosed with single quotes' => array("data: !!binary 'SGVsbG8gd29ybGQ='"),
+            'containing spaces' => array('data: !!binary  "SGVs bG8gd 29ybGQ="'),
+            'in block scalar' => array(
+                <<<EOT
+data: !!binary |
+    SGVsbG8gd29ybGQ=
+EOT
+    ),
+            'containing spaces in block scalar' => array(
+                <<<EOT
+data: !!binary |
+    SGVs bG8gd 29ybGQ=
+EOT
+    ),
+        );
+    }
+
+    /**
+     * @dataProvider getInvalidBinaryData
+     */
+    public function testParseInvalidBinaryData($data, $expectedMessage)
+    {
+        $this->setExpectedExceptionRegExp('\Symfony\Component\Yaml\Exception\ParseException', $expectedMessage);
+
+        $this->parser->parse($data);
+    }
+
+    public function getInvalidBinaryData()
+    {
+        return array(
+            'length not a multiple of four' => array('data: !!binary "SGVsbG8d29ybGQ="', '/The normalized base64 encoded data \(data without whitespace characters\) length must be a multiple of four \(\d+ bytes given\)/'),
+            'invalid characters' => array('!!binary "SGVsbG8#d29ybGQ="', '/The base64 encoded data \(.*\) contains invalid characters/'),
+            'too many equals characters' => array('data: !!binary "SGVsbG8gd29yb==="', '/The base64 encoded data \(.*\) contains invalid characters/'),
+            'misplaced equals character' => array('data: !!binary "SGVsbG8gd29ybG=Q"', '/The base64 encoded data \(.*\) contains invalid characters/'),
+            'length not a multiple of four in block scalar' => array(
+                <<<EOT
+data: !!binary |
+    SGVsbG8d29ybGQ=
+EOT
+                ,
+                '/The normalized base64 encoded data \(data without whitespace characters\) length must be a multiple of four \(\d+ bytes given\)/',
+            ),
+            'invalid characters in block scalar' => array(
+                <<<EOT
+data: !!binary |
+    SGVsbG8#d29ybGQ=
+EOT
+                ,
+                '/The base64 encoded data \(.*\) contains invalid characters/',
+            ),
+            'too many equals characters in block scalar' => array(
+                <<<EOT
+data: !!binary |
+    SGVsbG8gd29yb===
+EOT
+                ,
+                '/The base64 encoded data \(.*\) contains invalid characters/',
+            ),
+            'misplaced equals character in block scalar' => array(
+                <<<EOT
+data: !!binary |
+    SGVsbG8gd29ybG=Q
+EOT
+                ,
+                '/The base64 encoded data \(.*\) contains invalid characters/',
+            ),
         );
     }
 }

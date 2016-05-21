@@ -16,7 +16,7 @@ use Symfony\Component\OptionsResolver\OptionsResolver;
 
 /**
  * @author Paráda József <joczy.parada@gmail.com>
- */ 
+ */
 class ChoiceSubType extends AbstractType
 {
     /**
@@ -36,16 +36,8 @@ class ChoiceSubType extends AbstractType
     /**
      * {@inheritdoc}
      */
-    public function getName()
-    {
-        return 'sub_choice';
-    }
-
-    /**
-     * {@inheritdoc}
-     */
     public function getParent()
     {
-        return 'choice';
+        return 'Symfony\Component\Form\Extension\Core\Type\ChoiceType';
     }
 }

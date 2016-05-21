@@ -18,20 +18,27 @@ use Symfony\Component\Cache\CacheItem;
 /**
  * @author Nicolas Grekas <p@tchwork.com>
  */
-class ProxyAdapter implements CacheItemPoolInterface
+class ProxyAdapter implements AdapterInterface
 {
     private $pool;
+    private $namespace;
+    private $namespaceLen;
     private $createCacheItem;
+    private $hits = 0;
+    private $misses = 0;
 
-    public function __construct(CacheItemPoolInterface $pool)
+    public function __construct(CacheItemPoolInterface $pool, $namespace = '', $defaultLifetime = 0)
     {
         $this->pool = $pool;
+        $this->namespace = '' === $namespace ? '' : $this->getId($namespace);
+        $this->namespaceLen = strlen($namespace);
         $this->createCacheItem = \Closure::bind(
-            function ($key, $value, $isHit) {
+            function ($key, $value, $isHit) use ($defaultLifetime) {
                 $item = new CacheItem();
                 $item->key = $key;
                 $item->value = $value;
                 $item->isHit = $isHit;
+                $item->defaultLifetime = $defaultLifetime;
 
                 return $item;
             },
@@ -46,9 +53,14 @@ class ProxyAdapter implements CacheItemPoolInterface
     public function getItem($key)
     {
         $f = $this->createCacheItem;
-        $item = $this->pool->getItem($key);
+        $item = $this->pool->getItem($this->getId($key));
+        if ($isHit = $item->isHit()) {
+            ++$this->hits;
+        } else {
+            ++$this->misses;
+        }
 
-        return $f($key, $item->get(), $item->isHit());
+        return $f($key, $item->get(), $isHit);
     }
 
     /**
@@ -56,14 +68,13 @@ class ProxyAdapter implements CacheItemPoolInterface
      */
     public function getItems(array $keys = array())
     {
-        $f = $this->createCacheItem;
-        $items = array();
-
-        foreach ($this->pool->getItems($keys) as $key => $item) {
-            $items[$key] = $f($key, $item->get(), $item->isHit());
+        if ($this->namespaceLen) {
+            foreach ($keys as $i => $key) {
+                $keys[$i] = $this->getId($key);
+            }
         }
 
-        return $items;
+        return $this->generateItems($this->pool->getItems($keys));
     }
 
     /**
@@ -71,7 +82,7 @@ class ProxyAdapter implements CacheItemPoolInterface
      */
     public function hasItem($key)
     {
-        return $this->pool->hasItem($key);
+        return $this->pool->hasItem($this->getId($key));
     }
 
     /**
@@ -87,7 +98,7 @@ class ProxyAdapter implements CacheItemPoolInterface
      */
     public function deleteItem($key)
     {
-        return $this->pool->deleteItem($key);
+        return $this->pool->deleteItem($this->getId($key));
     }
 
     /**
@@ -95,6 +106,12 @@ class ProxyAdapter implements CacheItemPoolInterface
      */
     public function deleteItems(array $keys)
     {
+        if ($this->namespaceLen) {
+            foreach ($keys as $i => $key) {
+                $keys[$i] = $this->getId($key);
+            }
+        }
+
         return $this->pool->deleteItems($keys);
     }
 
@@ -127,12 +144,57 @@ class ProxyAdapter implements CacheItemPoolInterface
         if (!$item instanceof CacheItem) {
             return false;
         }
-        static $prefix = "\0Symfony\Component\Cache\CacheItem\0";
         $item = (array) $item;
-        $poolItem = $this->pool->getItem($item[$prefix.'key']);
-        $poolItem->set($item[$prefix.'value']);
-        $poolItem->expiresAfter($item[$prefix.'lifetime']);
+        $expiry = $item[CacheItem::CAST_PREFIX.'expiry'];
+        $poolItem = $this->pool->getItem($this->namespace.$item[CacheItem::CAST_PREFIX.'key']);
+        $poolItem->set($item[CacheItem::CAST_PREFIX.'value']);
+        $poolItem->expiresAt(null !== $expiry ? \DateTime::createFromFormat('U', $expiry) : null);
 
         return $this->pool->$method($poolItem);
+    }
+
+    private function generateItems($items)
+    {
+        $f = $this->createCacheItem;
+
+        foreach ($items as $key => $item) {
+            if ($isHit = $item->isHit()) {
+                ++$this->hits;
+            } else {
+                ++$this->misses;
+            }
+            if ($this->namespaceLen) {
+                $key = substr($key, $this->namespaceLen);
+            }
+
+            yield $key => $f($key, $item->get(), $isHit);
+        }
+    }
+
+    /**
+     * Returns the number of cache read hits.
+     *
+     * @return int
+     */
+    public function getHits()
+    {
+        return $this->hits;
+    }
+
+    /**
+     * Returns the number of cache read misses.
+     *
+     * @return int
+     */
+    public function getMisses()
+    {
+        return $this->misses;
+    }
+
+    private function getId($key)
+    {
+        CacheItem::validateKey($key);
+
+        return $this->namespace.$key;
     }
 }

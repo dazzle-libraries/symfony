@@ -731,11 +731,7 @@ class Form implements \IteratorAggregate, FormInterface
             return true;
         }
 
-        if (count($this->getErrors(true)) > 0) {
-            return false;
-        }
-
-        return true;
+        return 0 === count($this->getErrors(true));
     }
 
     /**
@@ -1136,20 +1132,5 @@ class Form implements \IteratorAggregate, FormInterface
         }
 
         return $value;
-    }
-
-    /**
-     * Utility function for indenting multi-line strings.
-     *
-     * @param string $string The string
-     * @param int    $level  The number of spaces to use for indentation
-     *
-     * @return string The indented string
-     */
-    private static function indent($string, $level)
-    {
-        $indentation = str_repeat(' ', $level);
-
-        return rtrim($indentation.str_replace("\n", "\n".$indentation, $string), ' ');
     }
 }

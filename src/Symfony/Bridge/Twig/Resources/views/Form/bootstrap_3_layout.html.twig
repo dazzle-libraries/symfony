@@ -3,7 +3,7 @@
 {# Widgets #}
 
 {% block form_widget_simple -%}
-    {% if type is not defined or 'file' != type %}
+    {% if type is not defined or type not in ['file', 'hidden'] %}
         {%- set attr = attr|merge({class: (attr.class|default('') ~ ' form-control')|trim}) -%}
     {% endif %}
     {{- parent() -}}
@@ -94,14 +94,12 @@
 
 {% block choice_widget_expanded -%}
     {% if '-inline' in label_attr.class|default('') -%}
-        <div class="control-group">
-            {%- for child in form %}
-                {{- form_widget(child, {
-                    parent_label_class: label_attr.class|default(''),
-                    translation_domain: choice_translation_domain,
-                }) -}}
-            {% endfor -%}
-        </div>
+        {%- for child in form %}
+            {{- form_widget(child, {
+                parent_label_class: label_attr.class|default(''),
+                translation_domain: choice_translation_domain,
+            }) -}}
+        {% endfor -%}
     {%- else -%}
         <div {{ block('widget_container_attributes') }}>
             {%- for child in form %}
@@ -115,7 +113,7 @@
 {%- endblock choice_widget_expanded %}
 
 {% block checkbox_widget -%}
-    {% set parent_label_class = parent_label_class|default('') -%}
+    {%- set parent_label_class = parent_label_class|default(label_attr.class|default('')) -%}
     {% if 'checkbox-inline' in parent_label_class %}
         {{- form_label(form, null, { widget: parent() }) -}}
     {% else -%}
@@ -126,7 +124,7 @@
 {%- endblock checkbox_widget %}
 
 {% block radio_widget -%}
-    {%- set parent_label_class = parent_label_class|default('') -%}
+    {%- set parent_label_class = parent_label_class|default(label_attr.class|default('')) -%}
     {% if 'radio-inline' in parent_label_class %}
         {{- form_label(form, null, { widget: parent() }) -}}
     {% else -%}

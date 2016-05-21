@@ -13,6 +13,7 @@ namespace Symfony\Component\HttpKernel\Tests\Controller;
 
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpKernel\Controller\ControllerResolver;
+use Symfony\Component\HttpKernel\Tests\Fixtures\Controller\VariadicController;
 use Symfony\Component\HttpFoundation\Request;
 
 class ControllerResolverTest extends \PHPUnit_Framework_TestCase
@@ -136,6 +137,9 @@ class ControllerResolverTest extends \PHPUnit_Framework_TestCase
         );
     }
 
+    /**
+     * @group legacy
+     */
     public function testGetArguments()
     {
         $resolver = $this->createControllerResolver();
@@ -195,6 +199,21 @@ class ControllerResolverTest extends \PHPUnit_Framework_TestCase
         $request = Request::create('/');
         $controller = array(new self(), 'controllerMethod5');
         $this->assertEquals(array($request), $resolver->getArguments($request, $controller), '->getArguments() injects the request');
+    }
+
+    /**
+     * @requires PHP 5.6
+     * @group legacy
+     */
+    public function testGetVariadicArguments()
+    {
+        $resolver = new ControllerResolver();
+
+        $request = Request::create('/');
+        $request->attributes->set('foo', 'foo');
+        $request->attributes->set('bar', array('foo', 'bar'));
+        $controller = array(new VariadicController(), 'action');
+        $this->assertEquals(array('foo', 'foo', 'bar'), $resolver->getArguments($request, $controller));
     }
 
     public function testCreateControllerCanReturnAnyCallable()

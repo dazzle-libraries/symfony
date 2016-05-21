@@ -11,7 +11,6 @@
 
 namespace Symfony\Component\DependencyInjection\Tests\Compiler;
 
-use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\DefinitionDecorator;
 use Symfony\Component\DependencyInjection\Compiler\ResolveDefinitionTemplatesPass;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
@@ -254,10 +253,12 @@ class ResolveDefinitionTemplatesPassTest extends \PHPUnit_Framework_TestCase
         $container->register('parent', 'stdClass');
 
         $container->setDefinition('child1', new DefinitionDecorator('parent'))
-            ->setDecoratedService('foo', 'foo_inner')
+            ->setDecoratedService('foo', 'foo_inner', 5)
         ;
 
-        $this->assertEquals(array('foo', 'foo_inner', 0), $container->getDefinition('child1')->getDecoratedService());
+        $this->process($container);
+
+        $this->assertEquals(array('foo', 'foo_inner', 5), $container->getDefinition('child1')->getDecoratedService());
     }
 
     public function testDecoratedServiceCopiesDeprecatedStatusFromParent()
@@ -308,6 +309,20 @@ class ResolveDefinitionTemplatesPassTest extends \PHPUnit_Framework_TestCase
 
         $def = $container->getDefinition('child');
         $this->assertEquals(array('Foo', 'Bar'), $def->getAutowiringTypes());
+    }
+
+    public function testProcessResolvesAliases()
+    {
+        $container = new ContainerBuilder();
+
+        $container->register('parent', 'ParentClass');
+        $container->setAlias('parent_alias', 'parent');
+        $container->setDefinition('child', new DefinitionDecorator('parent_alias'));
+
+        $this->process($container);
+
+        $def = $container->getDefinition('child');
+        $this->assertSame('ParentClass', $def->getClass());
     }
 
     protected function process(ContainerBuilder $container)

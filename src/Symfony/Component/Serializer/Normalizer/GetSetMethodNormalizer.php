@@ -11,8 +11,6 @@
 
 namespace Symfony\Component\Serializer\Normalizer;
 
-use Symfony\Component\Serializer\Exception\RuntimeException;
-
 /**
  * Converts between objects with getter and setter methods and arrays.
  *
@@ -36,6 +34,8 @@ use Symfony\Component\Serializer\Exception\RuntimeException;
  */
 class GetSetMethodNormalizer extends AbstractObjectNormalizer
 {
+    private static $setterAccessibleCache = array();
+
     /**
      * {@inheritdoc}
      *
@@ -175,8 +175,13 @@ class GetSetMethodNormalizer extends AbstractObjectNormalizer
     protected function setAttributeValue($object, $attribute, $value, $format = null, array $context = array())
     {
         $setter = 'set'.ucfirst($attribute);
+        $key = get_class($object).':'.$setter;
 
-        if (is_callable(array($object, $setter))) {
+        if (!isset(self::$setterAccessibleCache[$key])) {
+            self::$setterAccessibleCache[$key] = is_callable(array($object, $setter)) && !(new \ReflectionMethod($object, $setter))->isStatic();
+        }
+
+        if (self::$setterAccessibleCache[$key]) {
             $object->$setter($value);
         }
     }

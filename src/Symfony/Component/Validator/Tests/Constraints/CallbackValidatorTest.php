@@ -15,6 +15,7 @@ use Symfony\Component\Validator\Constraint;
 use Symfony\Component\Validator\Constraints\Callback;
 use Symfony\Component\Validator\Constraints\CallbackValidator;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
+use Symfony\Component\Validator\Test\ConstraintValidatorTestCase;
 
 class CallbackValidatorTest_Class
 {
@@ -43,7 +44,7 @@ class CallbackValidatorTest_Object
     }
 }
 
-class CallbackValidatorTest extends AbstractConstraintValidatorTest
+class CallbackValidatorTest extends ConstraintValidatorTestCase
 {
     protected function createValidator()
     {
@@ -232,21 +233,21 @@ class CallbackValidatorTest extends AbstractConstraintValidatorTest
         $object = new \stdClass();
         $payloadCopy = null;
 
-        $constraint = new Callback([
-            'callback' => function($object, ExecutionContextInterface $constraint, $payload) use (&$payloadCopy) {
-                $payloadCopy = $payload; 
+        $constraint = new Callback(array(
+            'callback' => function ($object, ExecutionContextInterface $constraint, $payload) use (&$payloadCopy) {
+                $payloadCopy = $payload;
             },
             'payload' => 'Hello world!',
-        ]);
+        ));
         $this->validator->validate($object, $constraint);
         $this->assertEquals('Hello world!', $payloadCopy);
 
         $payloadCopy = null;
-        $constraint = new Callback([
-            'callback' => function($object, ExecutionContextInterface $constraint, $payload) use (&$payloadCopy) {
-                $payloadCopy = $payload; 
+        $constraint = new Callback(array(
+            'callback' => function ($object, ExecutionContextInterface $constraint, $payload) use (&$payloadCopy) {
+                $payloadCopy = $payload;
             },
-        ]);
+        ));
         $this->validator->validate($object, $constraint);
         $this->assertNull($payloadCopy);
     }

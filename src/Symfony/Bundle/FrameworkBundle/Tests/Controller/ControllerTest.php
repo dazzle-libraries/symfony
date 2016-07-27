@@ -14,10 +14,13 @@ namespace Symfony\Bundle\FrameworkBundle\Tests\Controller;
 use Symfony\Bundle\FrameworkBundle\Tests\TestCase;
 use Symfony\Bundle\FrameworkBundle\Controller\Controller;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\File\File;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 use Symfony\Component\HttpFoundation\Session\Flash\FlashBag;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
@@ -53,6 +56,9 @@ class ControllerTest extends TestCase
         $this->assertEquals('xml--fr', $response->getContent());
     }
 
+    /**
+     * @group legacy
+     */
     public function testGetUser()
     {
         $user = new User('user', 'pass');
@@ -64,6 +70,9 @@ class ControllerTest extends TestCase
         $this->assertSame($controller->getUser(), $user);
     }
 
+    /**
+     * @group legacy
+     */
     public function testGetUserAnonymousUserConvertedToNull()
     {
         $token = new AnonymousToken('default', 'anon.');
@@ -74,6 +83,9 @@ class ControllerTest extends TestCase
         $this->assertNull($controller->getUser());
     }
 
+    /**
+     * @group legacy
+     */
     public function testGetUserWithEmptyTokenStorage()
     {
         $controller = new TestController();
@@ -83,6 +95,7 @@ class ControllerTest extends TestCase
     }
 
     /**
+     * @group legacy
      * @expectedException \LogicException
      * @expectedExceptionMessage The SecurityBundle is not registered in your application.
      */
@@ -207,6 +220,126 @@ class ControllerTest extends TestCase
         $this->assertEquals('[]', $response->getContent());
         $response->setEncodingOptions(JSON_FORCE_OBJECT);
         $this->assertEquals('{}', $response->getContent());
+    }
+
+    public function testFile()
+    {
+        /* @var ContainerInterface $container */
+        $container = $this->getMock('Symfony\Component\DependencyInjection\ContainerInterface');
+        $kernel = $this->getMock('Symfony\Component\HttpKernel\HttpKernelInterface');
+        $container->set('kernel', $kernel);
+
+        $controller = new TestController();
+        $controller->setContainer($container);
+
+        /* @var BinaryFileResponse $response */
+        $response = $controller->file(new File(__FILE__));
+        $this->assertInstanceOf(BinaryFileResponse::class, $response);
+        $this->assertSame(200, $response->getStatusCode());
+        if ($response->headers->get('content-type')) {
+            $this->assertSame('text/x-php', $response->headers->get('content-type'));
+        }
+        $this->assertContains(ResponseHeaderBag::DISPOSITION_ATTACHMENT, $response->headers->get('content-disposition'));
+        $this->assertContains(basename(__FILE__), $response->headers->get('content-disposition'));
+    }
+
+    public function testFileAsInline()
+    {
+        $container = $this->getMock('Symfony\Component\DependencyInjection\ContainerInterface');
+        $controller = new TestController();
+        $controller->setContainer($container);
+
+        /* @var BinaryFileResponse $response */
+        $response = $controller->file(new File(__FILE__), null, ResponseHeaderBag::DISPOSITION_INLINE);
+
+        $this->assertInstanceOf(BinaryFileResponse::class, $response);
+        $this->assertSame(200, $response->getStatusCode());
+        if ($response->headers->get('content-type')) {
+            $this->assertSame('text/x-php', $response->headers->get('content-type'));
+        }
+        $this->assertContains(ResponseHeaderBag::DISPOSITION_INLINE, $response->headers->get('content-disposition'));
+        $this->assertContains(basename(__FILE__), $response->headers->get('content-disposition'));
+    }
+
+    public function testFileWithOwnFileName()
+    {
+        $container = $this->getMock('Symfony\Component\DependencyInjection\ContainerInterface');
+        $controller = new TestController();
+        $controller->setContainer($container);
+
+        /* @var BinaryFileResponse $response */
+        $fileName = 'test.php';
+        $response = $controller->file(new File(__FILE__), $fileName);
+
+        $this->assertInstanceOf(BinaryFileResponse::class, $response);
+        $this->assertSame(200, $response->getStatusCode());
+        if ($response->headers->get('content-type')) {
+            $this->assertSame('text/x-php', $response->headers->get('content-type'));
+        }
+        $this->assertContains(ResponseHeaderBag::DISPOSITION_ATTACHMENT, $response->headers->get('content-disposition'));
+        $this->assertContains($fileName, $response->headers->get('content-disposition'));
+    }
+
+    public function testFileWithOwnFileNameAsInline()
+    {
+        $container = $this->getMock('Symfony\Component\DependencyInjection\ContainerInterface');
+        $controller = new TestController();
+        $controller->setContainer($container);
+
+        /* @var BinaryFileResponse $response */
+        $fileName = 'test.php';
+        $response = $controller->file(new File(__FILE__), $fileName, ResponseHeaderBag::DISPOSITION_INLINE);
+
+        $this->assertInstanceOf(BinaryFileResponse::class, $response);
+        $this->assertSame(200, $response->getStatusCode());
+        if ($response->headers->get('content-type')) {
+            $this->assertSame('text/x-php', $response->headers->get('content-type'));
+        }
+        $this->assertContains(ResponseHeaderBag::DISPOSITION_INLINE, $response->headers->get('content-disposition'));
+        $this->assertContains($fileName, $response->headers->get('content-disposition'));
+    }
+
+    public function testFileFromPath()
+    {
+        $controller = new TestController();
+
+        /* @var BinaryFileResponse $response */
+        $response = $controller->file(__FILE__);
+
+        $this->assertInstanceOf(BinaryFileResponse::class, $response);
+        $this->assertSame(200, $response->getStatusCode());
+        if ($response->headers->get('content-type')) {
+            $this->assertSame('text/x-php', $response->headers->get('content-type'));
+        }
+        $this->assertContains(ResponseHeaderBag::DISPOSITION_ATTACHMENT, $response->headers->get('content-disposition'));
+        $this->assertContains(basename(__FILE__), $response->headers->get('content-disposition'));
+    }
+
+    public function testFileFromPathWithCustomizedFileName()
+    {
+        $controller = new TestController();
+
+        /* @var BinaryFileResponse $response */
+        $response = $controller->file(__FILE__, 'test.php');
+
+        $this->assertInstanceOf(BinaryFileResponse::class, $response);
+        $this->assertSame(200, $response->getStatusCode());
+        if ($response->headers->get('content-type')) {
+            $this->assertSame('text/x-php', $response->headers->get('content-type'));
+        }
+        $this->assertContains(ResponseHeaderBag::DISPOSITION_ATTACHMENT, $response->headers->get('content-disposition'));
+        $this->assertContains('test.php', $response->headers->get('content-disposition'));
+    }
+
+    /**
+     * @expectedException \Symfony\Component\HttpFoundation\File\Exception\FileNotFoundException
+     */
+    public function testFileWhichDoesNotExist()
+    {
+        $controller = new TestController();
+
+        /* @var BinaryFileResponse $response */
+        $response = $controller->file('some-file.txt', 'test.php');
     }
 
     public function testIsGranted()
@@ -492,6 +625,11 @@ class TestController extends Controller
     public function json($data, $status = 200, $headers = array(), $context = array())
     {
         return parent::json($data, $status, $headers, $context);
+    }
+
+    public function file($file, $fileName = null, $disposition = ResponseHeaderBag::DISPOSITION_ATTACHMENT)
+    {
+        return parent::file($file, $fileName, $disposition);
     }
 
     public function isGranted($attributes, $object = null)

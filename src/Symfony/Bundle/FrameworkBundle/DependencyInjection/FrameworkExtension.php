@@ -12,6 +12,7 @@
 namespace Symfony\Bundle\FrameworkBundle\DependencyInjection;
 
 use Doctrine\Common\Annotations\Reader;
+use Symfony\Component\Cache\Adapter\AdapterInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Definition;
@@ -24,11 +25,13 @@ use Symfony\Component\Config\Resource\DirectoryResource;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\HttpKernel\DependencyInjection\Extension;
 use Symfony\Component\Config\FileLocator;
+use Symfony\Component\PropertyAccess\PropertyAccessor;
 use Symfony\Component\Serializer\Mapping\Factory\CacheClassMetadataFactory;
 use Symfony\Component\Serializer\Normalizer\DataUriNormalizer;
 use Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
 use Symfony\Component\Serializer\Normalizer\JsonSerializableNormalizer;
 use Symfony\Component\Validator\Validation;
+use Symfony\Component\Workflow;
 
 /**
  * FrameworkExtension.
@@ -36,6 +39,7 @@ use Symfony\Component\Validator\Validation;
  * @author Fabien Potencier <fabien@symfony.com>
  * @author Jeremy Mikola <jmikola@gmail.com>
  * @author Kévin Dunglas <dunglas@gmail.com>
+ * @author Grégoire Pineau <lyrixx@lyrixx.info>
  */
 class FrameworkExtension extends Extension
 {
@@ -126,7 +130,8 @@ class FrameworkExtension extends Extension
         $this->registerFragmentsConfiguration($config['fragments'], $container, $loader);
         $this->registerTranslatorConfiguration($config['translator'], $container);
         $this->registerProfilerConfiguration($config['profiler'], $container, $loader);
-        $this->registerCacheConfiguration($config['cache'], $container, $loader);
+        $this->registerCacheConfiguration($config['cache'], $container);
+        $this->registerWorkflowConfiguration($config['workflows'], $container, $loader);
 
         if ($this->isConfigEnabled($container, $config['router'])) {
             $this->registerRouterConfiguration($config['router'], $container, $loader);
@@ -135,11 +140,11 @@ class FrameworkExtension extends Extension
         $this->registerAnnotationsConfiguration($config['annotations'], $container, $loader);
         $this->registerPropertyAccessConfiguration($config['property_access'], $container);
 
-        if (isset($config['serializer'])) {
+        if ($this->isConfigEnabled($container, $config['serializer'])) {
             $this->registerSerializerConfiguration($config['serializer'], $container, $loader);
         }
 
-        if (isset($config['property_info'])) {
+        if ($this->isConfigEnabled($container, $config['property_info'])) {
             $this->registerPropertyInfoConfiguration($config['property_info'], $container, $loader);
         }
 
@@ -165,15 +170,23 @@ class FrameworkExtension extends Extension
         }
 
         $this->addClassesToCompile(array(
+            'Symfony\\Component\\Config\\ConfigCache',
             'Symfony\\Component\\Config\\FileLocator',
 
             'Symfony\\Component\\Debug\\ErrorHandler',
 
+            'Symfony\\Component\\DependencyInjection\\ContainerAwareInterface',
+            'Symfony\\Component\\DependencyInjection\\Container',
+
             'Symfony\\Component\\EventDispatcher\\Event',
             'Symfony\\Component\\EventDispatcher\\ContainerAwareEventDispatcher',
 
+            'Symfony\\Component\\HttpFoundation\\Response',
+            'Symfony\\Component\\HttpFoundation\\ResponseHeaderBag',
+
             'Symfony\\Component\\HttpKernel\\EventListener\\ResponseListener',
             'Symfony\\Component\\HttpKernel\\EventListener\\RouterListener',
+            'Symfony\\Component\\HttpKernel\\Bundle\\Bundle',
             'Symfony\\Component\\HttpKernel\\Controller\\ControllerResolver',
             'Symfony\\Component\\HttpKernel\\Controller\\ArgumentResolver',
             'Symfony\\Component\\HttpKernel\\ControllerMetadata\\ArgumentMetadata',
@@ -184,13 +197,18 @@ class FrameworkExtension extends Extension
             'Symfony\\Component\\HttpKernel\\Event\\GetResponseEvent',
             'Symfony\\Component\\HttpKernel\\Event\\GetResponseForControllerResultEvent',
             'Symfony\\Component\\HttpKernel\\Event\\GetResponseForExceptionEvent',
+            'Symfony\\Component\\HttpKernel\\HttpKernel',
             'Symfony\\Component\\HttpKernel\\KernelEvents',
             'Symfony\\Component\\HttpKernel\\Config\\FileLocator',
 
             'Symfony\\Bundle\\FrameworkBundle\\Controller\\ControllerNameParser',
             'Symfony\\Bundle\\FrameworkBundle\\Controller\\ControllerResolver',
+
             // Cannot be included because annotations will parse the big compiled class file
             // 'Symfony\\Bundle\\FrameworkBundle\\Controller\\Controller',
+
+            // cannot be included as commands are discovered based on the path to this class via Reflection
+            // 'Symfony\\Bundle\\FrameworkBundle\\FrameworkBundle',
         ));
     }
 
@@ -341,6 +359,54 @@ class FrameworkExtension extends Extension
 
         if (!$config['collect']) {
             $container->getDefinition('profiler')->addMethodCall('disable', array());
+        }
+    }
+
+    /**
+     * Loads the workflow configuration.
+     *
+     * @param array            $workflows A workflow configuration array
+     * @param ContainerBuilder $container A ContainerBuilder instance
+     * @param XmlFileLoader    $loader    An XmlFileLoader instance
+     */
+    private function registerWorkflowConfiguration(array $workflows, ContainerBuilder $container, XmlFileLoader $loader)
+    {
+        if (!$workflows) {
+            return;
+        }
+
+        $loader->load('workflow.xml');
+
+        $registryDefinition = $container->getDefinition('workflow.registry');
+
+        foreach ($workflows as $name => $workflow) {
+            $definitionDefinition = new Definition(Workflow\Definition::class);
+            $definitionDefinition->addMethodCall('addPlaces', array($workflow['places']));
+            foreach ($workflow['transitions'] as $transitionName => $transition) {
+                $definitionDefinition->addMethodCall('addTransition', array(new Definition(Workflow\Transition::class, array($transitionName, $transition['from'], $transition['to']))));
+            }
+
+            if (isset($workflow['marking_store']['type'])) {
+                $markingStoreDefinition = new DefinitionDecorator('workflow.marking_store.'.$workflow['marking_store']['type']);
+                foreach ($workflow['marking_store']['arguments'] as $argument) {
+                    $markingStoreDefinition->addArgument($argument);
+                }
+            } else {
+                $markingStoreDefinition = new Reference($workflow['marking_store']['service']);
+            }
+
+            $workflowDefinition = new DefinitionDecorator('workflow.abstract');
+            $workflowDefinition->replaceArgument(0, $definitionDefinition);
+            $workflowDefinition->replaceArgument(1, $markingStoreDefinition);
+            $workflowDefinition->replaceArgument(3, $name);
+
+            $workflowId = 'workflow.'.$name;
+
+            $container->setDefinition($workflowId, $workflowDefinition);
+
+            foreach ($workflow['supports'] as $supportedClass) {
+                $registryDefinition->addMethodCall('add', array(new Reference($workflowId), $supportedClass));
+            }
         }
     }
 
@@ -822,10 +888,10 @@ class FrameworkExtension extends Extension
 
             if (is_dir($dir = $dirname.'/Resources/config/validation')) {
                 foreach (Finder::create()->files()->in($dir)->name('*.xml') as $file) {
-                    $files[0][] = $file->getRealpath();
+                    $files[0][] = $file->getRealPath();
                 }
                 foreach (Finder::create()->files()->in($dir)->name('*.yml') as $file) {
-                    $files[1][] = $file->getRealpath();
+                    $files[1][] = $file->getRealPath();
                 }
 
                 $container->addResource(new DirectoryResource($dir));
@@ -903,15 +969,11 @@ class FrameworkExtension extends Extension
      */
     private function registerSerializerConfiguration(array $config, ContainerBuilder $container, XmlFileLoader $loader)
     {
-        if (!$this->isConfigEnabled($container, $config)) {
-            return;
-        }
-
         if (class_exists('Symfony\Component\Serializer\Normalizer\DataUriNormalizer')) {
             // Run after serializer.normalizer.object
             $definition = $container->register('serializer.normalizer.data_uri', DataUriNormalizer::class);
             $definition->setPublic(false);
-            $definition->addTag('serializer.normalizer', ['priority' => -920]);
+            $definition->addTag('serializer.normalizer', array('priority' => -920));
         }
 
         if (class_exists('Symfony\Component\Serializer\Normalizer\DateTimeNormalizer')) {
@@ -965,13 +1027,13 @@ class FrameworkExtension extends Extension
 
             if (is_dir($dir = $dirname.'/Resources/config/serialization')) {
                 foreach (Finder::create()->files()->in($dir)->name('*.xml') as $file) {
-                    $definition = new Definition('Symfony\Component\Serializer\Mapping\Loader\XmlFileLoader', array($file->getRealpath()));
+                    $definition = new Definition('Symfony\Component\Serializer\Mapping\Loader\XmlFileLoader', array($file->getRealPath()));
                     $definition->setPublic(false);
 
                     $serializerLoaders[] = $definition;
                 }
                 foreach (Finder::create()->files()->in($dir)->name('*.yml') as $file) {
-                    $definition = new Definition('Symfony\Component\Serializer\Mapping\Loader\YamlFileLoader', array($file->getRealpath()));
+                    $definition = new Definition('Symfony\Component\Serializer\Mapping\Loader\YamlFileLoader', array($file->getRealPath()));
                     $definition->setPublic(false);
 
                     $serializerLoaders[] = $definition;
@@ -1022,10 +1084,6 @@ class FrameworkExtension extends Extension
      */
     private function registerPropertyInfoConfiguration(array $config, ContainerBuilder $container, XmlFileLoader $loader)
     {
-        if (!$this->isConfigEnabled($container, $config)) {
-            return;
-        }
-
         $loader->load('property_info.xml');
 
         if (interface_exists('phpDocumentor\Reflection\DocBlockFactoryInterface')) {
@@ -1035,11 +1093,11 @@ class FrameworkExtension extends Extension
         }
     }
 
-    private function registerCacheConfiguration(array $config, ContainerBuilder $container, XmlFileLoader $loader)
+    private function registerCacheConfiguration(array $config, ContainerBuilder $container)
     {
-        $nonce = substr(str_replace('/', '-', base64_encode(md5(uniqid(mt_rand(), true), true))), 0, -2);
-        $container->getDefinition('cache.adapter.apcu')->replaceArgument(2, $nonce);
-        $container->getDefinition('cache.adapter.system')->replaceArgument(2, $nonce);
+        $version = substr(str_replace('/', '-', base64_encode(md5(uniqid(mt_rand(), true), true))), 0, -2);
+        $container->getDefinition('cache.adapter.apcu')->replaceArgument(2, $version);
+        $container->getDefinition('cache.adapter.system')->replaceArgument(2, $version);
         $container->getDefinition('cache.adapter.filesystem')->replaceArgument(2, $config['directory']);
 
         foreach (array('doctrine', 'psr6', 'redis') as $name) {
@@ -1060,6 +1118,15 @@ class FrameworkExtension extends Extension
 
             $definition->addTag('cache.pool', $pool);
             $container->setDefinition($name, $definition);
+        }
+
+        if (method_exists(PropertyAccessor::class, 'createCache')) {
+            $propertyAccessDefinition = $container->register('cache.property_access', AdapterInterface::class);
+            $propertyAccessDefinition->setPublic(false);
+            $propertyAccessDefinition->setFactory(array(PropertyAccessor::class, 'createCache'));
+            $propertyAccessDefinition->setArguments(array(null, null, $version, new Reference('logger', ContainerInterface::IGNORE_ON_INVALID_REFERENCE)));
+            $propertyAccessDefinition->addTag('cache.pool', array('clearer' => 'cache.default_clearer'));
+            $propertyAccessDefinition->addTag('monolog.logger', array('channel' => 'cache'));
         }
 
         $this->addClassesToCompile(array(

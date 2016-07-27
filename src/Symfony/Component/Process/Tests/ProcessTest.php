@@ -55,6 +55,9 @@ class ProcessTest extends \PHPUnit_Framework_TestCase
 
     public function testThatProcessDoesNotThrowWarningDuringRun()
     {
+        if ('\\' === DIRECTORY_SEPARATOR) {
+            $this->markTestSkipped('This test is transient on Windows');
+        }
         @trigger_error('Test Error', E_USER_NOTICE);
         $process = $this->getProcess(self::$phpBin." -r 'sleep(3)'");
         $process->run();
@@ -1153,7 +1156,8 @@ class ProcessTest extends \PHPUnit_Framework_TestCase
     /**
      * @dataProvider provideVariousIncrementals
      */
-    public function testIncrementalOutputDoesNotRequireAnotherCall($stream, $method) {
+    public function testIncrementalOutputDoesNotRequireAnotherCall($stream, $method)
+    {
         $process = $this->getProcess(self::$phpBin.' -r '.escapeshellarg('$n = 0; while ($n < 3) { file_put_contents(\''.$stream.'\', $n, 1); $n++; usleep(1000); }'), null, null, null, null);
         $process->start();
         $result = '';
@@ -1168,7 +1172,8 @@ class ProcessTest extends \PHPUnit_Framework_TestCase
         $process->stop();
     }
 
-    public function provideVariousIncrementals() {
+    public function provideVariousIncrementals()
+    {
         return array(
             array('php://stdout', 'getIncrementalOutput'),
             array('php://stderr', 'getIncrementalErrorOutput'),
@@ -1357,6 +1362,40 @@ class ProcessTest extends \PHPUnit_Framework_TestCase
         $this->assertSame('456', $p2->getOutput());
     }
 
+    public function testInheritEnvEnabled()
+    {
+        $process = $this->getProcess(self::$phpBin.' -r '.escapeshellarg('echo serialize($_SERVER);'), null, array('BAR' => 'BAZ'));
+
+        putenv('FOO=BAR');
+
+        $this->assertSame($process, $process->inheritEnvironmentVariables(1));
+        $this->assertTrue($process->areEnvironmentVariablesInherited());
+
+        $process->run();
+
+        $expected = array('BAR' => 'BAZ', 'FOO' => 'BAR');
+        $env = array_intersect_key(unserialize($process->getOutput()), $expected);
+
+        $this->assertSame($expected, $env);
+    }
+
+    public function testInheritEnvDisabled()
+    {
+        $process = $this->getProcess(self::$phpBin.' -r '.escapeshellarg('echo serialize($_SERVER);'), null, array('BAR' => 'BAZ'));
+
+        putenv('FOO=BAR');
+
+        $this->assertFalse($process->areEnvironmentVariablesInherited());
+
+        $process->run();
+
+        $expected = array('BAR' => 'BAZ', 'FOO' => 'BAR');
+        $env = array_intersect_key(unserialize($process->getOutput()), $expected);
+        unset($expected['FOO']);
+
+        $this->assertSame($expected, $env);
+    }
+
     /**
      * @param string      $commandline
      * @param null|string $cwd
@@ -1379,7 +1418,7 @@ class ProcessTest extends \PHPUnit_Framework_TestCase
             } catch (RuntimeException $e) {
                 $this->assertSame('This PHP has been compiled with --enable-sigchild. You must use setEnhanceSigchildCompatibility() to use this method.', $e->getMessage());
                 if ($enhance) {
-                    $process->setEnhanceSigChildCompatibility(true);
+                    $process->setEnhanceSigchildCompatibility(true);
                 } else {
                     self::$notEnhancedSigchild = true;
                 }

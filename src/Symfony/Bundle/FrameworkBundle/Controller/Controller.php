@@ -13,13 +13,16 @@ namespace Symfony\Bundle\FrameworkBundle\Controller;
 
 use Symfony\Component\DependencyInjection\ContainerAwareInterface;
 use Symfony\Component\DependencyInjection\ContainerAwareTrait;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
+use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Component\Security\Csrf\CsrfToken;
 use Symfony\Component\Form\Extension\Core\Type\FormType;
 use Symfony\Component\Form\Form;
@@ -121,6 +124,23 @@ abstract class Controller implements ContainerAwareInterface
         }
 
         return new JsonResponse($data, $status, $headers);
+    }
+
+    /**
+     * Returns a BinaryFileResponse object with original or customized file name and disposition header.
+     *
+     * @param \SplFileInfo|string $file        File object or path to file to be sent as response
+     * @param string|null         $fileName    File name to be sent to response or null (will use original file name)
+     * @param string              $disposition Disposition of response ("attachment" is default, other type is "inline")
+     *
+     * @return BinaryFileResponse
+     */
+    protected function file($file, $fileName = null, $disposition = ResponseHeaderBag::DISPOSITION_ATTACHMENT)
+    {
+        $response = new BinaryFileResponse($file);
+        $response->setContentDisposition($disposition, $fileName === null ? $response->getFile()->getFileName() : $fileName);
+
+        return $response;
     }
 
     /**
@@ -343,12 +363,16 @@ abstract class Controller implements ContainerAwareInterface
      *
      * @return mixed
      *
+     * @deprecated as of 3.2 and will be removed in 4.0. You can typehint your method argument with Symfony\Component\Security\Core\User\UserInterface instead.
+     *
      * @throws \LogicException If SecurityBundle is not available
      *
      * @see TokenInterface::getUser()
      */
     protected function getUser()
     {
+        @trigger_error(sprintf('%s() is deprecated as of 3.2 and will be removed in 4.0. You can typehint your method argument with %s instead.', __METHOD__, UserInterface::class), E_USER_DEPRECATED);
+
         if (!$this->container->has('security.token_storage')) {
             throw new \LogicException('The SecurityBundle is not registered in your application.');
         }

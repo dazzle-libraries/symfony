@@ -1,13 +1,31 @@
 UPGRADE FROM 3.x to 4.0
 =======================
 
+Debug
+-----
+
+ * `FlattenException::getTrace()` now returns additional type descriptions
+   `integer` and `float`.
+
 DependencyInjection
 -------------------
+
+ * Calling `get()` on a `ContainerBuilder` instance before compiling the
+   container is not supported anymore and will throw an exception.
 
  * Using unsupported configuration keys in YAML configuration files raises an
    exception.
 
  * Using unsupported options to configure service aliases raises an exception.
+
+ * Setting or unsetting a private service with the `Container::set()` method is
+   no longer supported. Only public services can be set or unset.
+
+ * Checking the existence of a private service with the `Container::has()`
+   method is no longer supported and will return `false`.
+
+ * Requesting a private service with the `Container::get()` method is no longer
+   supported.
 
 Form
 ----
@@ -38,6 +56,25 @@ Form
 
  * Caching of the loaded `ChoiceListInterface` in the `LazyChoiceList` has been removed,
    it must be cached in the `ChoiceLoaderInterface` implementation instead.
+
+ * Calling `isValid()` on a `Form` instance before submitting it is not supported
+   anymore and raises an exception.
+
+   Before:
+
+   ```php
+   if ($form->isValid()) {
+       // ...
+   }
+   ```
+
+   After:
+
+   ```php
+   if ($form->isSubmitted() && $form->isValid()) {
+       // ...
+   }
+   ```
 
 FrameworkBundle
 ---------------
@@ -77,18 +114,19 @@ FrameworkBundle
     - `"form.type.submit"`
     - `"form.type.reset"`
 
- * The service `serializer.mapping.cache.apc` has been removed; use
-   `serializer.mapping.cache.doctrine.apc` instead.
-
- * The `framework.serializer.cache` option has been removed. APCu should now
-   be automatically used when available so you can remove this configuration key.
+ * The `framework.serializer.cache` option and the services
+   `serializer.mapping.cache.apc` and `serializer.mapping.cache.doctrine.apc`
+   have been removed. APCu should now be automatically used when available.
+   
+ * The `Controller::getUser()` method has been removed in favor of the ability
+   to typehint the security user object in the action.
 
 HttpKernel
 ----------
 
- * Possibility to pass objects as URI attributes to the ESI and SSI renderers
-   has been removed. The inline fragment renderer should be used with object
-   attributes.
+ * Possibility to pass non-scalar values as URI attributes to the ESI and SSI
+   renderers has been removed. The inline fragment renderer should be used with
+   non-scalar attributes.
 
  * The `ControllerResolver::getArguments()` method has been removed. If you
    have your own `ControllerResolverInterface` implementation, you should
@@ -196,3 +234,30 @@ Validator
 ---------
 
  * The `DateTimeValidator::PATTERN` constant was removed.
+
+ * `Tests\Constraints\AbstractConstraintValidatorTest` has been removed in
+   favor of `Test\ConstraintValidatorTestCase`.
+
+   Before:
+
+   ```php
+   // ...
+   use Symfony\Component\Validator\Tests\Constraints\AbstractConstraintValidatorTest;
+
+   class MyCustomValidatorTest extends AbstractConstraintValidatorTest
+   {
+       // ...
+   }
+   ```
+
+   After:
+
+   ```php
+   // ...
+   use Symfony\Component\Validator\Test\ConstraintValidatorTestCase;
+
+   class MyCustomValidatorTest extends ConstraintValidatorTestCase
+   {
+       // ...
+   }
+   ```

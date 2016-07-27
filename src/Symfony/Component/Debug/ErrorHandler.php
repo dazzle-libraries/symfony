@@ -353,7 +353,7 @@ class ErrorHandler
      * @param int    $line
      * @param array  $context
      *
-     * @return bool Returns false when no handling happens so that the PHP engine can handle the error itself.
+     * @return bool Returns false when no handling happens so that the PHP engine can handle the error itself
      *
      * @throws \ErrorException When $this->thrownErrors requests so
      *
@@ -579,6 +579,8 @@ class ErrorHandler
                 static::unstackErrors();
             }
         } catch (\Exception $exception) {
+            // Handled below
+        } catch (\Throwable $exception) {
             // Handled below
         }
 

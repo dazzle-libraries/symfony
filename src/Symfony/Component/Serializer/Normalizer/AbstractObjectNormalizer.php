@@ -56,7 +56,7 @@ abstract class AbstractObjectNormalizer extends AbstractNormalizer
     public function normalize($object, $format = null, array $context = array())
     {
         if (!isset($context['cache_key'])) {
-            $context['cache_key'] = $this->getCacheKey($context);
+            $context['cache_key'] = $this->getCacheKey($format, $context);
         }
 
         if ($this->isCircularReference($object, $context)) {
@@ -169,23 +169,20 @@ abstract class AbstractObjectNormalizer extends AbstractNormalizer
     public function denormalize($data, $class, $format = null, array $context = array())
     {
         if (!isset($context['cache_key'])) {
-            $context['cache_key'] = $this->getCacheKey($context);
+            $context['cache_key'] = $this->getCacheKey($format, $context);
         }
         $allowedAttributes = $this->getAllowedAttributes($class, $context, true);
         $normalizedData = $this->prepareForDenormalization($data);
 
         $reflectionClass = new \ReflectionClass($class);
-        $object = $this->instantiateObject($normalizedData, $class, $context, $reflectionClass, $allowedAttributes);
+        $object = $this->instantiateObject($normalizedData, $class, $context, $reflectionClass, $allowedAttributes, $format);
 
         foreach ($normalizedData as $attribute => $value) {
             if ($this->nameConverter) {
                 $attribute = $this->nameConverter->denormalize($attribute);
             }
 
-            $allowed = $allowedAttributes === false || in_array($attribute, $allowedAttributes);
-            $ignored = in_array($attribute, $this->ignoredAttributes);
-
-            if (!$allowed || $ignored) {
+            if (($allowedAttributes !== false && !in_array($attribute, $allowedAttributes)) || !$this->isAllowedAttribute($class, $attribute, $format, $context)) {
                 continue;
             }
 
@@ -241,7 +238,7 @@ abstract class AbstractObjectNormalizer extends AbstractNormalizer
      */
     private function validateAndDenormalize($currentClass, $attribute, $data, $format, array $context)
     {
-        if (null === $this->propertyTypeExtractor || null === $types = $this->propertyTypeExtractor->getTypes($currentClass, $attribute)){
+        if (null === $this->propertyTypeExtractor || null === $types = $this->propertyTypeExtractor->getTypes($currentClass, $attribute)) {
             return $data;
         }
 
@@ -339,14 +336,15 @@ abstract class AbstractObjectNormalizer extends AbstractNormalizer
     /**
      * Gets the cache key to use.
      *
-     * @param array $context
+     * @param string|null $format
+     * @param array       $context
      *
      * @return bool|string
      */
-    private function getCacheKey(array $context)
+    private function getCacheKey($format, array $context)
     {
         try {
-            return md5(serialize($context));
+            return md5($format.serialize($context));
         } catch (\Exception $exception) {
             // The context cannot be serialized, skip the cache
             return false;

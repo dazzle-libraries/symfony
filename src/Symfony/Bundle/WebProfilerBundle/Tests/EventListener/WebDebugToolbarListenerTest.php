@@ -12,6 +12,7 @@
 namespace Symfony\Bundle\WebProfilerBundle\Tests\EventListener;
 
 use Symfony\Bundle\WebProfilerBundle\EventListener\WebDebugToolbarListener;
+use Symfony\Component\HttpFoundation\HeaderBag;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\FilterResponseEvent;
@@ -31,7 +32,7 @@ class WebDebugToolbarListenerTest extends \PHPUnit_Framework_TestCase
 
         $response = new Response($content);
 
-        $m->invoke($listener, $response, Request::create('/'));
+        $m->invoke($listener, $response, Request::create('/'), array('csp_script_nonce' => 'scripto', 'csp_style_nonce' => 'stylo'));
         $this->assertEquals($expected, $response->getContent());
     }
 
@@ -80,6 +81,21 @@ class WebDebugToolbarListenerTest extends \PHPUnit_Framework_TestCase
         $listener->onKernelResponse($event);
 
         $this->assertEquals("<html><head></head><body>\nWDT\n</body></html>", $response->getContent());
+    }
+
+    /**
+     * @depends testToolbarIsInjected
+     */
+    public function testToolbarIsNotInjectedOnContentDispositionAttachment()
+    {
+        $response = new Response('<html><head></head><body></body></html>');
+        $response->headers->set('Content-Disposition', 'attachment; filename=test.html');
+        $event = new FilterResponseEvent($this->getKernelMock(), $this->getRequestMock(false, 'html'), HttpKernelInterface::MASTER_REQUEST, $response);
+
+        $listener = new WebDebugToolbarListener($this->getTwigMock());
+        $listener->onKernelResponse($event);
+
+        $this->assertEquals('<html><head></head><body></body></html>', $response->getContent());
     }
 
     /**
@@ -242,6 +258,8 @@ class WebDebugToolbarListenerTest extends \PHPUnit_Framework_TestCase
         $request->expects($this->any())
             ->method('getRequestFormat')
             ->will($this->returnValue($requestFormat));
+
+        $request->headers = new HeaderBag();
 
         if ($hasSession) {
             $session = $this->getMock('Symfony\Component\HttpFoundation\Session\Session', array(), array(), '', false);

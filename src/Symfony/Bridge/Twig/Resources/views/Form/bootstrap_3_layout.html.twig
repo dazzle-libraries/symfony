@@ -21,12 +21,12 @@
 
 {% block money_widget -%}
     <div class="input-group">
-        {% set prepend = '{{' == money_pattern[0:2] %}
-        {% if not prepend %}
+        {% set append = money_pattern starts with '{{' %}
+        {% if not append %}
             <span class="input-group-addon">{{ money_pattern|replace({ '{{ widget }}':''}) }}</span>
         {% endif %}
         {{- block('form_widget_simple') -}}
-        {% if prepend %}
+        {% if append %}
             <span class="input-group-addon">{{ money_pattern|replace({ '{{ widget }}':''}) }}</span>
         {% endif %}
     </div>
@@ -86,6 +86,25 @@
         {%- endif -%}
     {% endif %}
 {%- endblock time_widget %}
+
+{% block dateinterval_widget %}
+    {% if widget == 'single_text' %}
+	{{- block('form_widget_simple') -}}
+    {% else %}
+	{% set attr = attr|merge({class: (attr.class|default('') ~ ' form-inline')|trim}) %}
+	<div {{ block('widget_container_attributes') }}>
+	    {{ form_errors(form) }}
+	    {% if with_years %}{{ form_widget(form.years) }}{% endif %}
+	    {% if with_months %}{{ form_widget(form.months) }}{% endif %}
+	    {% if with_weeks %}{{ form_widget(form.weeks) }}{% endif %}
+	    {% if with_days %}{{ form_widget(form.days) }}{% endif %}
+	    {% if with_hours %}{{ form_widget(form.hours) }}{% endif %}
+	    {% if with_minutes %}{{ form_widget(form.minutes) }}{% endif %}
+	    {% if with_seconds %}{{ form_widget(form.seconds) }}{% endif %}
+	    {% if with_invert %}{{ form_widget(form.invert) }}{% endif %}
+	</div>
+    {% endif %}
+{% endblock dateinterval_widget %}
 
 {% block choice_widget_collapsed -%}
     {% set attr = attr|merge({class: (attr.class|default('') ~ ' form-control')|trim}) %}

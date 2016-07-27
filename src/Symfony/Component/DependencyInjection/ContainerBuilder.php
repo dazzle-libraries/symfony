@@ -94,6 +94,8 @@ class ContainerBuilder extends Container implements TaggedContainerInterface
      */
     private $usedTags = array();
 
+    private $compiled = false;
+
     /**
      * Sets the track resources flag.
      *
@@ -296,14 +298,22 @@ class ContainerBuilder extends Container implements TaggedContainerInterface
     /**
      * Adds a compiler pass.
      *
-     * @param CompilerPassInterface $pass A compiler pass
-     * @param string                $type The type of compiler pass
+     * @param CompilerPassInterface $pass     A compiler pass
+     * @param string                $type     The type of compiler pass
+     * @param int                   $priority Used to sort the passes
      *
      * @return ContainerBuilder The current instance
      */
-    public function addCompilerPass(CompilerPassInterface $pass, $type = PassConfig::TYPE_BEFORE_OPTIMIZATION)
+    public function addCompilerPass(CompilerPassInterface $pass, $type = PassConfig::TYPE_BEFORE_OPTIMIZATION/**, $priority = 0*/)
     {
-        $this->getCompiler()->addPass($pass, $type);
+        // For BC
+        if (func_num_args() >= 3) {
+            $priority = func_get_arg(2);
+        } else {
+            $priority = 0;
+        }
+
+        $this->getCompiler()->addPass($pass, $type, $priority);
 
         $this->addObjectResource($pass);
 
@@ -409,6 +419,10 @@ class ContainerBuilder extends Container implements TaggedContainerInterface
      */
     public function get($id, $invalidBehavior = ContainerInterface::EXCEPTION_ON_INVALID_REFERENCE)
     {
+        if (!$this->compiled) {
+            @trigger_error(sprintf('Calling %s() before compiling the container is deprecated since version 3.2 and will throw an exception in 4.0.', __METHOD__), E_USER_DEPRECATED);
+        }
+
         $id = strtolower($id);
 
         if ($service = parent::get($id, ContainerInterface::NULL_ON_INVALID_REFERENCE)) {
@@ -458,7 +472,7 @@ class ContainerBuilder extends Container implements TaggedContainerInterface
      * parameter, the value will still be 'bar' as defined in the ContainerBuilder
      * constructor.
      *
-     * @param ContainerBuilder $container The ContainerBuilder instance to merge.
+     * @param ContainerBuilder $container The ContainerBuilder instance to merge
      *
      * @throws BadMethodCallException When this ContainerBuilder is frozen
      */
@@ -543,12 +557,14 @@ class ContainerBuilder extends Container implements TaggedContainerInterface
         }
 
         $compiler->compile($this);
+        $this->compiled = true;
 
-        if ($this->trackResources) {
-            foreach ($this->definitions as $definition) {
-                if ($definition->isLazy() && ($class = $definition->getClass()) && class_exists($class)) {
-                    $this->addClassResource(new \ReflectionClass($class));
-                }
+        foreach ($this->definitions as $id => $definition) {
+            if (!$definition->isPublic()) {
+                $this->privates[$id] = true;
+            }
+            if ($this->trackResources && $definition->isLazy() && ($class = $definition->getClass()) && class_exists($class)) {
+                $this->addClassResource(new \ReflectionClass($class));
             }
         }
 
@@ -944,7 +960,7 @@ class ContainerBuilder extends Container implements TaggedContainerInterface
      *
      * @param string $name The tag name
      *
-     * @return array An array of tags with the tagged service as key, holding a list of attribute arrays.
+     * @return array An array of tags with the tagged service as key, holding a list of attribute arrays
      */
     public function findTaggedServiceIds($name)
     {
@@ -1000,7 +1016,7 @@ class ContainerBuilder extends Container implements TaggedContainerInterface
     /**
      * Returns the Service Conditionals.
      *
-     * @param mixed $value An array of conditionals to return.
+     * @param mixed $value An array of conditionals to return
      *
      * @return array An array of Service conditionals
      */

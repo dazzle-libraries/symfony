@@ -21,6 +21,7 @@ use Symfony\Component\Serializer\Serializer;
 use Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
 use Symfony\Component\Serializer\Tests\Fixtures\CircularReferenceDummy;
+use Symfony\Component\Serializer\Tests\Fixtures\DenormalizerDecoratorSerializer;
 use Symfony\Component\Serializer\Tests\Fixtures\MaxDepthDummy;
 use Symfony\Component\Serializer\Tests\Fixtures\SiblingHolder;
 use Symfony\Component\Serializer\Mapping\Loader\AnnotationLoader;
@@ -155,6 +156,49 @@ class ObjectNormalizerTest extends \PHPUnit_Framework_TestCase
         $obj = $this->normalizer->denormalize($data, __NAMESPACE__.'\ObjectConstructorDummy', 'any');
         $this->assertEquals('foo', $obj->getFoo());
         $this->assertEquals('bar', $obj->bar);
+    }
+
+    public function testConstructorWithObjectTypeHintDenormalize()
+    {
+        $data = array(
+            'id' => 10,
+            'inner' => array(
+                'foo' => 'oof',
+                'bar' => 'rab',
+            ),
+        );
+
+        $normalizer = new ObjectNormalizer();
+        $serializer = new DenormalizerDecoratorSerializer($normalizer);
+        $normalizer->setSerializer($serializer);
+
+        $obj = $normalizer->denormalize($data, DummyWithConstructorObject::class);
+        $this->assertInstanceOf(DummyWithConstructorObject::class, $obj);
+        $this->assertEquals(10, $obj->getId());
+        $this->assertInstanceOf(ObjectInner::class, $obj->getInner());
+        $this->assertEquals('oof', $obj->getInner()->foo);
+        $this->assertEquals('rab', $obj->getInner()->bar);
+    }
+
+    /**
+     * @expectedException \Symfony\Component\Serializer\Exception\RuntimeException
+     * @expectedExceptionMessage Could not determine the class of the parameter "unknown".
+     */
+    public function testConstructorWithUnknownObjectTypeHintDenormalize()
+    {
+        $data = array(
+            'id' => 10,
+            'unknown' => array(
+                'foo' => 'oof',
+                'bar' => 'rab',
+            ),
+        );
+
+        $normalizer = new ObjectNormalizer();
+        $serializer = new DenormalizerDecoratorSerializer($normalizer);
+        $normalizer->setSerializer($serializer);
+
+        $normalizer->denormalize($data, DummyWithConstructorInexistingObject::class);
     }
 
     public function testGroupsNormalize()
@@ -309,6 +353,19 @@ class ObjectNormalizerTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals(
             array('fooBar' => 'foobar'),
             $this->normalizer->normalize($obj, 'any')
+        );
+    }
+
+    public function testIgnoredAttributesDenormalize()
+    {
+        $this->normalizer->setIgnoredAttributes(array('fooBar', 'bar', 'baz'));
+
+        $obj = new ObjectDummy();
+        $obj->setFoo('foo');
+
+        $this->assertEquals(
+            $obj,
+            $this->normalizer->denormalize(array('fooBar' => 'fooBar', 'foo' => 'foo', 'baz' => 'baz'), __NAMESPACE__.'\ObjectDummy')
         );
     }
 
@@ -532,6 +589,28 @@ class ObjectNormalizerTest extends \PHPUnit_Framework_TestCase
 
         $serializer->denormalize(array('date' => 'foo'), ObjectOuter::class);
     }
+
+    public function testExtractAttributesRespectsFormat()
+    {
+        $normalizer = new FormatAndContextAwareNormalizer();
+
+        $data = new ObjectDummy();
+        $data->setFoo('bar');
+        $data->bar = 'foo';
+
+        $this->assertSame(array('foo' => 'bar', 'bar' => 'foo'), $normalizer->normalize($data, 'foo_and_bar_included'));
+    }
+
+    public function testExtractAttributesRespectsContext()
+    {
+        $normalizer = new FormatAndContextAwareNormalizer();
+
+        $data = new ObjectDummy();
+        $data->setFoo('bar');
+        $data->bar = 'foo';
+
+        $this->assertSame(array('foo' => 'bar', 'bar' => 'foo'), $normalizer->normalize($data, null, array('include_foo_and_bar' => true)));
+    }
 }
 
 class ObjectDummy
@@ -730,4 +809,49 @@ class ObjectInner
 {
     public $foo;
     public $bar;
+}
+
+class FormatAndContextAwareNormalizer extends ObjectNormalizer
+{
+    protected function isAllowedAttribute($classOrObject, $attribute, $format = null, array $context = array())
+    {
+        if (in_array($attribute, array('foo', 'bar')) && 'foo_and_bar_included' === $format) {
+            return true;
+        }
+
+        if (in_array($attribute, array('foo', 'bar')) && isset($context['include_foo_and_bar']) && true === $context['include_foo_and_bar']) {
+            return true;
+        }
+
+        return false;
+    }
+}
+
+class DummyWithConstructorObject
+{
+    private $id;
+    private $inner;
+
+    public function __construct($id, ObjectInner $inner)
+    {
+        $this->id = $id;
+        $this->inner = $inner;
+    }
+
+    public function getId()
+    {
+        return $this->id;
+    }
+
+    public function getInner()
+    {
+        return $this->inner;
+    }
+}
+
+class DummyWithConstructorInexistingObject
+{
+    public function __construct($id, Unknown $unknown)
+    {
+    }
 }

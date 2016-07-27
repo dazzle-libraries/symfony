@@ -12,8 +12,10 @@
 namespace Symfony\Component\Cache\Tests\Adapter;
 
 use Cache\IntegrationTests\CachePoolTest;
+use Psr\Cache\CacheItemInterface;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Cache\Adapter\ProxyAdapter;
+use Symfony\Component\Cache\CacheItem;
 
 /**
  * @group time-sensitive
@@ -30,20 +32,40 @@ class ProxyAdapterTest extends CachePoolTest
         return new ProxyAdapter(new ArrayAdapter());
     }
 
-    public function testGetHitsMisses()
+    /**
+     * @expectedException Exception
+     * @expectedExceptionMessage OK bar
+     */
+    public function testProxyfiedItem()
     {
-        $pool = $this->createCachePool();
+        $item = new CacheItem();
+        $pool = new ProxyAdapter(new TestingArrayAdapter($item));
 
-        $this->assertSame(0, $pool->getHits());
-        $this->assertSame(0, $pool->getMisses());
+        $proxyItem = $pool->getItem('foo');
 
-        $bar = $pool->getItem('bar');
-        $this->assertSame(0, $pool->getHits());
-        $this->assertSame(1, $pool->getMisses());
+        $this->assertFalse($proxyItem === $item);
+        $pool->save($proxyItem->set('bar'));
+    }
+}
 
-        $pool->save($bar->set('baz'));
-        $bar = $pool->getItem('bar');
-        $this->assertSame(1, $pool->getHits());
-        $this->assertSame(1, $pool->getMisses());
+class TestingArrayAdapter extends ArrayAdapter
+{
+    private $item;
+
+    public function __construct(CacheItemInterface $item)
+    {
+        $this->item = $item;
+    }
+
+    public function getItem($key)
+    {
+        return $this->item;
+    }
+
+    public function save(CacheItemInterface $item)
+    {
+        if ($item === $this->item) {
+            throw new \Exception('OK '.$item->get());
+        }
     }
 }

@@ -1,4 +1,4 @@
-<script>/*<![CDATA[*/
+<script{% if csp_script_nonce is defined and csp_script_nonce %} nonce={{ csp_script_nonce }}{% endif %}>/*<![CDATA[*/
     {# Caution: the contents of this file are processed by Twig before loading
                 them as JavaScript source code. Always use '/*' comments instead
                 of '//' comments to avoid impossible-to-debug side-effects #}
@@ -81,6 +81,20 @@
             },
 
             requestStack = [],
+
+            extractHeaders = function(xhr, stackElement) {
+                /* Here we avoid to call xhr.getResponseHeader in order to */
+                /* prevent polluting the console with CORS security errors */
+                var allHeaders = xhr.getAllResponseHeaders();
+                var ret;
+
+                if (ret = allHeaders.match(/^x-debug-token:\s+(.*)$/im)) {
+                    stackElement.profile = ret[1];
+                }
+                if (ret = allHeaders.match(/^x-debug-token-link:\s+(.*)$/im)) {
+                    stackElement.profilerUrl = ret[1];
+                }
+            },
 
             renderAjaxRequests = function() {
                 var requestCounter = document.querySelectorAll('.sf-toolbar-ajax-requests');
@@ -210,7 +224,7 @@
         var addEventListener;
 
         var el = document.createElement('div');
-        if (!'addEventListener' in el) {
+        if (!('addEventListener' in el)) {
             addEventListener = function (element, eventName, callback) {
                 element.attachEvent('on' + eventName, callback);
             };
@@ -255,8 +269,7 @@
                                 stackElement.loading = false;
                                 stackElement.error = self.status < 200 || self.status >= 400;
                                 stackElement.statusCode = self.status;
-                                stackElement.profile = self.getResponseHeader("X-Debug-Token");
-                                stackElement.profilerUrl = self.getResponseHeader("X-Debug-Token-Link");
+                                extractHeaders(self, stackElement);
 
                                 Sfjs.renderAjaxRequests();
                             }

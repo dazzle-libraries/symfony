@@ -44,7 +44,7 @@
                             </dl>
                         {%- endif %}
 
-                        {% if request_collector and request_collector.forward and request_collector.forward.controller.class is defined -%}
+                        {% if request_collector and request_collector.forward|default(false) and request_collector.forward.controller.class is defined -%}
                             {%- set forward = request_collector.forward -%}
                             {%- set controller = forward.controller -%}
                             <dl class="metadata">
@@ -94,7 +94,7 @@
             <div id="sidebar">
                 <div id="sidebar-shortcuts">
                     <div class="shortcuts">
-                        <a href="#" class="visible-small" onclick="Sfjs.toggleClass(document.getElementById('sidebar'), 'expanded'); return false;">
+                        <a href="#" id="sidebarShortcutsMenu" class="visible-small">
                             <span class="icon">{{ include('@WebProfiler/Icon/menu.svg') }}</span>
                         </a>
 
@@ -124,4 +124,12 @@
             </div>
         </div>
     </div>
+    <script>
+        (function () {
+            Sfjs.addEventListener(document.getElementById('sidebarShortcutsMenu'), 'click', function (event) {
+                event.preventDefault();
+                Sfjs.toggleClass(document.getElementById('sidebar'), 'expanded');
+            })
+        }())
+    </script>
 {% endblock %}

@@ -97,7 +97,7 @@ class YamlFileLoaderTest extends \PHPUnit_Framework_TestCase
         $container = new ContainerBuilder();
         $loader = new YamlFileLoader($container, new FileLocator(self::$fixturesPath.'/yaml'));
         $loader->load('services2.yml');
-        $this->assertEquals(array('foo' => 'bar', 'mixedcase' => array('MixedCaseKey' => 'value'), 'values' => array(true, false, 0, 1000.3), 'bar' => 'foo', 'escape' => '@escapeme', 'foo_bar' => new Reference('foo_bar')), $container->getParameterBag()->all(), '->load() converts YAML keys to lowercase');
+        $this->assertEquals(array('foo' => 'bar', 'mixedcase' => array('MixedCaseKey' => 'value'), 'values' => array(true, false, 0, 1000.3, PHP_INT_MAX), 'bar' => 'foo', 'escape' => '@escapeme', 'foo_bar' => new Reference('foo_bar')), $container->getParameterBag()->all(), '->load() converts YAML keys to lowercase');
     }
 
     public function testLoadImports()
@@ -113,7 +113,7 @@ class YamlFileLoaderTest extends \PHPUnit_Framework_TestCase
         $loader->load('services4.yml');
 
         $actual = $container->getParameterBag()->all();
-        $expected = array('foo' => 'bar', 'values' => array(true, false), 'bar' => '%foo%', 'escape' => '@escapeme', 'foo_bar' => new Reference('foo_bar'), 'mixedcase' => array('MixedCaseKey' => 'value'), 'imported_from_ini' => true, 'imported_from_xml' => true);
+        $expected = array('foo' => 'bar', 'values' => array(true, false, PHP_INT_MAX), 'bar' => '%foo%', 'escape' => '@escapeme', 'foo_bar' => new Reference('foo_bar'), 'mixedcase' => array('MixedCaseKey' => 'value'), 'imported_from_ini' => true, 'imported_from_xml' => true);
         $this->assertEquals(array_keys($expected), array_keys($actual), '->load() imports and merges imported files');
 
         // Bad import throws no exception due to ignore_errors value.
@@ -135,7 +135,7 @@ class YamlFileLoaderTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals('sc_configure', $services['configurator1']->getConfigurator(), '->load() parses the configurator tag');
         $this->assertEquals(array(new Reference('baz'), 'configure'), $services['configurator2']->getConfigurator(), '->load() parses the configurator tag');
         $this->assertEquals(array('BazClass', 'configureStatic'), $services['configurator3']->getConfigurator(), '->load() parses the configurator tag');
-        $this->assertEquals(array(array('setBar', array()), array('setBar', array()), array('setBar', array(new Expression('service("foo").foo() ~ (container.hasparameter("foo") ? parameter("foo") : "default")')))), $services['method_call1']->getMethodCalls(), '->load() parses the method_call tag');
+        $this->assertEquals(array(array('setBar', array()), array('setBar', array()), array('setBar', array(new Expression('service("foo").foo() ~ (container.hasParameter("foo") ? parameter("foo") : "default")')))), $services['method_call1']->getMethodCalls(), '->load() parses the method_call tag');
         $this->assertEquals(array(array('setBar', array('foo', new Reference('foo'), array(true, false)))), $services['method_call2']->getMethodCalls(), '->load() parses the method_call tag');
         $this->assertEquals('factory', $services['new_factory1']->getFactory(), '->load() parses the factory tag');
         $this->assertEquals(array(new Reference('baz'), 'getClass'), $services['new_factory2']->getFactory(), '->load() parses the factory tag');
@@ -163,6 +163,17 @@ class YamlFileLoaderTest extends \PHPUnit_Framework_TestCase
 
         $this->assertEquals(array(new Reference('baz'), 'getClass'), $services['factory']->getFactory(), '->load() parses the factory tag with service:method');
         $this->assertEquals(array('FooBacFactory', 'createFooBar'), $services['factory_with_static_call']->getFactory(), '->load() parses the factory tag with Class::method');
+    }
+
+    public function testLoadConfiguratorShortSyntax()
+    {
+        $container = new ContainerBuilder();
+        $loader = new YamlFileLoader($container, new FileLocator(self::$fixturesPath.'/yaml'));
+        $loader->load('services_configurator_short_syntax.yml');
+        $services = $container->getDefinitions();
+
+        $this->assertEquals(array(new Reference('foo_bar_configurator'), 'configure'), $services['foo_bar']->getConfigurator(), '->load() parses the configurator tag with service:method');
+        $this->assertEquals(array('FooBarConfigurator', 'configureFooBar'), $services['foo_bar_with_static_call']->getConfigurator(), '->load() parses the configurator tag with Class::method');
     }
 
     public function testExtensions()

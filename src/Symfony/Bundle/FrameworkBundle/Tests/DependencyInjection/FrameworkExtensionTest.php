@@ -11,6 +11,7 @@
 
 namespace Symfony\Bundle\FrameworkBundle\Tests\DependencyInjection;
 
+use Symfony\Bridge\PhpUnit\ErrorAssert;
 use Symfony\Bundle\FrameworkBundle\Tests\TestCase;
 use Symfony\Bundle\FrameworkBundle\DependencyInjection\FrameworkExtension;
 use Symfony\Component\Cache\Adapter\ApcuAdapter;
@@ -116,6 +117,13 @@ abstract class FrameworkExtensionTest extends TestCase
         $this->assertFalse($container->hasDefinition('data_collector.config'), '->registerProfilerConfiguration() does not load collectors.xml');
     }
 
+    public function testWorkflow()
+    {
+        $container = $this->createContainerFromFile('workflow');
+
+        $this->assertTrue($container->hasDefinition('workflow.my_workflow'));
+    }
+
     public function testRouter()
     {
         $container = $this->createContainerFromFile('full');
@@ -205,6 +213,13 @@ abstract class FrameworkExtensionTest extends TestCase
 
         $this->assertEquals(array('FrameworkBundle:Form', 'theme1', 'theme2'), $container->getParameter('templating.helper.form.resources'), '->registerTemplatingConfiguration() registers the theme and adds the base theme');
         $this->assertEquals('global_hinclude_template', $container->getParameter('fragment.renderer.hinclude.global_template'), '->registerTemplatingConfiguration() registers the global hinclude.js template');
+    }
+
+    public function testTemplatingCanBeDisabled()
+    {
+        $container = $this->createContainerFromFile('templating_disabled');
+
+        $this->assertFalse($container->hasParameter('templating.engines'), '"templating.engines" container parameter is not registered when templating is disabled.');
     }
 
     public function testAssets()
@@ -538,28 +553,16 @@ abstract class FrameworkExtensionTest extends TestCase
 
     /**
      * @group legacy
+     * @requires function Symfony\Bridge\PhpUnit\ErrorAssert::assertDeprecationsAreTriggered
      */
     public function testDeprecatedSerializerCacheOption()
     {
-        $deprecations = array();
-        set_error_handler(function ($type, $msg) use (&$deprecations) {
-            if (E_USER_DEPRECATED !== $type) {
-                restore_error_handler();
+        ErrorAssert::assertDeprecationsAreTriggered('The "framework.serializer.cache" option is deprecated', function () {
+            $container = $this->createContainerFromFile('serializer_legacy_cache', array('kernel.debug' => true, 'kernel.container_class' => __CLASS__));
 
-                return call_user_func_array('PHPUnit_Util_ErrorHandler::handleError', func_get_args());
-            }
-
-            $deprecations[] = $msg;
+            $this->assertFalse($container->hasDefinition('serializer.mapping.cache_class_metadata_factory'));
+            $this->assertEquals(new Reference('foo'), $container->getDefinition('serializer.mapping.class_metadata_factory')->getArgument(1));
         });
-
-        $container = $this->createContainerFromFile('serializer_legacy_cache', array('kernel.debug' => true, 'kernel.container_class' => __CLASS__));
-
-        restore_error_handler();
-
-        $this->assertCount(1, $deprecations);
-        $this->assertContains('The "framework.serializer.cache" option is deprecated', $deprecations[0]);
-        $this->assertFalse($container->hasDefinition('serializer.mapping.cache_class_metadata_factory'));
-        $this->assertEquals(new Reference('foo'), $container->getDefinition('serializer.mapping.class_metadata_factory')->getArgument(1));
     }
 
     public function testAssetHelperWhenAssetsAreEnabled()

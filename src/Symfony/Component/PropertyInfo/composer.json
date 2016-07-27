@@ -23,7 +23,8 @@
         }
     ],
     "require": {
-        "php": ">=5.5.9"
+        "php": ">=5.5.9",
+        "symfony/inflector": "~3.1"
     },
     "require-dev": {
         "symfony/serializer": "~2.8|~3.0",
@@ -32,7 +33,8 @@
         "doctrine/annotations": "~1.0"
     },
     "conflict": {
-        "phpdocumentor/reflection-docblock": "<3.0"
+        "phpdocumentor/reflection-docblock": "<3.0",
+        "phpdocumentor/type-resolver": "<0.2.0"
     },
     "suggest": {
         "psr/cache-implementation": "To cache results",

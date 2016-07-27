@@ -35,7 +35,7 @@ class DnsMock
     /**
      * Configures the mock values for DNS queries.
      *
-     * @param array $hosts Mocked hosts as keys, arrays of DNS records as returned by dns_get_record() as values.
+     * @param array $hosts Mocked hosts as keys, arrays of DNS records as returned by dns_get_record() as values
      */
     public static function withMockedHosts(array $hosts)
     {
@@ -169,6 +169,8 @@ class DnsMock
         if (0 < strpos($class, '\\Tests\\')) {
             $ns = str_replace('\\Tests\\', '\\', $class);
             $mockedNs[] = substr($ns, 0, strrpos($ns, '\\'));
+        } elseif (0 === strpos($class, 'Tests\\')) {
+            $mockedNs[] = substr($class, 6, strrpos($class, '\\') - 6);
         }
         foreach ($mockedNs as $ns) {
             if (function_exists($ns.'\checkdnsrr')) {

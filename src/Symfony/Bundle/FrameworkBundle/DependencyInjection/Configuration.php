@@ -103,6 +103,7 @@ class Configuration implements ConfigurationInterface
         $this->addSsiSection($rootNode);
         $this->addFragmentsSection($rootNode);
         $this->addProfilerSection($rootNode);
+        $this->addWorkflowSection($rootNode);
         $this->addRouterSection($rootNode);
         $this->addSessionSection($rootNode);
         $this->addRequestSection($rootNode);
@@ -226,6 +227,99 @@ class Configuration implements ConfigurationInterface
         ;
     }
 
+    private function addWorkflowSection(ArrayNodeDefinition $rootNode)
+    {
+        $rootNode
+            ->children()
+                ->arrayNode('workflows')
+                    ->useAttributeAsKey('name')
+                    ->prototype('array')
+                        ->children()
+                            ->arrayNode('marking_store')
+                                ->isRequired()
+                                ->children()
+                                    ->enumNode('type')
+                                        ->values(array('property_accessor', 'scalar'))
+                                    ->end()
+                                    ->arrayNode('arguments')
+                                        ->beforeNormalization()
+                                            ->ifString()
+                                            ->then(function ($v) { return array($v); })
+                                        ->end()
+                                        ->prototype('scalar')
+                                        ->end()
+                                    ->end()
+                                    ->scalarNode('service')
+                                        ->cannotBeEmpty()
+                                    ->end()
+                                ->end()
+                                ->validate()
+                                    ->always(function ($v) {
+                                        if (isset($v['type']) && isset($v['service'])) {
+                                            throw new \InvalidArgumentException('"type" and "service" could not be used together.');
+                                        }
+
+                                        return $v;
+                                    })
+                                ->end()
+                            ->end()
+                            ->arrayNode('supports')
+                                ->isRequired()
+                                ->beforeNormalization()
+                                    ->ifString()
+                                    ->then(function ($v) { return array($v); })
+                                ->end()
+                                ->prototype('scalar')
+                                    ->cannotBeEmpty()
+                                    ->validate()
+                                        ->ifTrue(function ($v) { return !class_exists($v); })
+                                        ->thenInvalid('The supported class %s does not exist.')
+                                    ->end()
+                                ->end()
+                            ->end()
+                            ->arrayNode('places')
+                                ->isRequired()
+                                ->requiresAtLeastOneElement()
+                                ->prototype('scalar')
+                                    ->cannotBeEmpty()
+                                ->end()
+                            ->end()
+                            ->arrayNode('transitions')
+                                ->useAttributeAsKey('name')
+                                ->isRequired()
+                                ->requiresAtLeastOneElement()
+                                ->prototype('array')
+                                    ->children()
+                                        ->arrayNode('from')
+                                            ->beforeNormalization()
+                                                ->ifString()
+                                                ->then(function ($v) { return array($v); })
+                                            ->end()
+                                            ->requiresAtLeastOneElement()
+                                            ->prototype('scalar')
+                                                ->cannotBeEmpty()
+                                            ->end()
+                                        ->end()
+                                        ->arrayNode('to')
+                                            ->beforeNormalization()
+                                                ->ifString()
+                                                ->then(function ($v) { return array($v); })
+                                            ->end()
+                                            ->requiresAtLeastOneElement()
+                                            ->prototype('scalar')
+                                                ->cannotBeEmpty()
+                                            ->end()
+                                        ->end()
+                                    ->end()
+                                ->end()
+                            ->end()
+                        ->end()
+                    ->end()
+                ->end()
+            ->end()
+        ;
+    }
+
     private function addRouterSection(ArrayNodeDefinition $rootNode)
     {
         $rootNode
@@ -320,6 +414,10 @@ class Configuration implements ConfigurationInterface
                 ->arrayNode('templating')
                     ->info('templating configuration')
                     ->canBeEnabled()
+                    ->beforeNormalization()
+                        ->ifTrue(function ($v) { return false === $v || is_array($v) && false === $v['enabled']; })
+                        ->then(function () { return array('enabled' => false, 'engines' => false); })
+                    ->end()
                     ->children()
                         ->scalarNode('hinclude_default_template')->defaultNull()->end()
                         ->scalarNode('cache')->end()
@@ -346,8 +444,9 @@ class Configuration implements ConfigurationInterface
                             ->example(array('twig'))
                             ->isRequired()
                             ->requiresAtLeastOneElement()
+                            ->canBeUnset()
                             ->beforeNormalization()
-                                ->ifTrue(function ($v) { return !is_array($v); })
+                                ->ifTrue(function ($v) { return !is_array($v) && false !== $v; })
                                 ->then(function ($v) { return array($v); })
                             ->end()
                             ->prototype('scalar')->end()

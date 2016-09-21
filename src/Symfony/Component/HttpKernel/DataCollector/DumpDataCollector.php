@@ -40,8 +40,15 @@ class DumpDataCollector extends DataCollector implements DataDumperInterface
 
     public function __construct(Stopwatch $stopwatch = null, $fileLinkFormat = null, $charset = null, RequestStack $requestStack = null, DataDumperInterface $dumper = null)
     {
+        $fileLinkFormat = $fileLinkFormat ?: ini_get('xdebug.file_link_format') ?: get_cfg_var('xdebug.file_link_format');
+        if ($fileLinkFormat && !is_array($fileLinkFormat)) {
+            $i = max(strpos($fileLinkFormat, '%f'), strpos($fileLinkFormat, '%l'));
+            $i = strpos($fileLinkFormat, '#"', $i) ?: strlen($fileLinkFormat);
+            $fileLinkFormat = array(substr($fileLinkFormat, 0, $i), substr($fileLinkFormat, $i + 1));
+            $fileLinkFormat[1] = @json_decode('{'.$fileLinkFormat[1].'}', true) ?: array();
+        }
         $this->stopwatch = $stopwatch;
-        $this->fileLinkFormat = $fileLinkFormat ?: ini_get('xdebug.file_link_format') ?: get_cfg_var('xdebug.file_link_format');
+        $this->fileLinkFormat = $fileLinkFormat;
         $this->charset = $charset ?: ini_get('php.output_encoding') ?: ini_get('default_charset') ?: 'UTF-8';
         $this->requestStack = $requestStack;
         $this->dumper = $dumper;
@@ -149,6 +156,7 @@ class DumpDataCollector extends DataCollector implements DataDumperInterface
         ) {
             if ($response->headers->has('Content-Type') && false !== strpos($response->headers->get('Content-Type'), 'html')) {
                 $this->dumper = new HtmlDumper('php://output', $this->charset);
+                $this->dumper->setDisplayOptions(array('fileLinkFormat' => $this->fileLinkFormat));
             } else {
                 $this->dumper = new CliDumper('php://output', $this->charset);
             }
@@ -165,6 +173,8 @@ class DumpDataCollector extends DataCollector implements DataDumperInterface
             return 'a:0:{}';
         }
 
+        $this->data[] = $this->fileLinkFormat;
+        $this->data[] = $this->charset;
         $ser = serialize($this->data);
         $this->data = array();
         $this->dataCount = 0;
@@ -179,8 +189,10 @@ class DumpDataCollector extends DataCollector implements DataDumperInterface
     public function unserialize($data)
     {
         parent::unserialize($data);
+        $charset = array_pop($this->data);
+        $fileLinkFormat = array_pop($this->data);
         $this->dataCount = count($this->data);
-        self::__construct($this->stopwatch);
+        self::__construct($this->stopwatch, $fileLinkFormat, $charset);
     }
 
     public function getDumpsCount()
@@ -194,6 +206,7 @@ class DumpDataCollector extends DataCollector implements DataDumperInterface
 
         if ('html' === $format) {
             $dumper = new HtmlDumper($data, $this->charset);
+            $dumper->setDisplayOptions(array('fileLinkFormat' => $this->fileLinkFormat));
         } else {
             throw new \InvalidArgumentException(sprintf('Invalid dump format: %s', $format));
         }
@@ -201,9 +214,7 @@ class DumpDataCollector extends DataCollector implements DataDumperInterface
 
         foreach ($this->data as $dump) {
             $dumper->dump($dump['data']->withMaxDepth($maxDepthLimit)->withMaxItemsPerDepth($maxItemsPerDepth));
-
-            rewind($data);
-            $dump['data'] = stream_get_contents($data);
+            $dump['data'] = stream_get_contents($data, -1, 0);
             ftruncate($data, 0);
             rewind($data);
             $dumps[] = $dump;
@@ -232,6 +243,7 @@ class DumpDataCollector extends DataCollector implements DataDumperInterface
 
             if ('cli' !== PHP_SAPI && stripos($h[$i], 'html')) {
                 $this->dumper = new HtmlDumper('php://output', $this->charset);
+                $this->dumper->setDisplayOptions(array('fileLinkFormat' => $this->fileLinkFormat));
             } else {
                 $this->dumper = new CliDumper('php://output', $this->charset);
             }
@@ -256,7 +268,13 @@ class DumpDataCollector extends DataCollector implements DataDumperInterface
                         $name = strip_tags($this->style('', $name));
                         $file = strip_tags($this->style('', $file));
                         if ($fileLinkFormat) {
-                            $link = strtr(strip_tags($this->style('', $fileLinkFormat)), array('%f' => $file, '%l' => (int) $line));
+                            foreach ($fileLinkFormat[1] as $k => $v) {
+                                if (0 === strpos($file, $k)) {
+                                    $file = substr_replace($file, $v, 0, strlen($k));
+                                    break;
+                                }
+                            }
+                            $link = strtr(strip_tags($this->style('', $fileLinkFormat[0])), array('%f' => $file, '%l' => (int) $line));
                             $name = sprintf('<a href="%s" title="%s">'.$s.'</a>', $link, $file, $name);
                         } else {
                             $name = sprintf('<abbr title="%s">'.$s.'</abbr>', $file, $name);

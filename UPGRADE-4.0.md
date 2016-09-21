@@ -117,9 +117,32 @@ FrameworkBundle
  * The `framework.serializer.cache` option and the services
    `serializer.mapping.cache.apc` and `serializer.mapping.cache.doctrine.apc`
    have been removed. APCu should now be automatically used when available.
-   
+
  * The `Controller::getUser()` method has been removed in favor of the ability
    to typehint the security user object in the action.
+
+HttpFoundation
+---------------
+
+ * Extending the following methods of `Response`
+   is no longer possible (these methods are now `final`):
+
+    - `setDate`/`getDate`
+    - `setExpires`/`getExpires`
+    - `setLastModified`/`getLastModified`
+    - `setProtocolVersion`/`getProtocolVersion`
+    - `setStatusCode`/`getStatusCode`
+    - `setCharset`/`getCharset`
+    - `setPrivate`/`setPublic`
+    - `getAge`
+    - `getMaxAge`/`setMaxAge`
+    - `setSharedMaxAge`
+    - `getTtl`/`setTtl`
+    - `setClientTtl`
+    - `getEtag`/`setEtag`
+    - `hasVary`/`getVary`/`setVary`
+    - `isInvalid`/`isSuccessful`/`isRedirection`/`isClientError`/`isServerError`
+    - `isOk`/`isForbidden`/`isNotFound`/`isRedirect`/`isEmpty`
 
 HttpKernel
 ----------
@@ -131,6 +154,8 @@ HttpKernel
  * The `ControllerResolver::getArguments()` method has been removed. If you
    have your own `ControllerResolverInterface` implementation, you should
    inject an `ArgumentResolverInterface` instance.
+
+ * The `DataCollector::varToString()` method has been removed in favor of `cloneVar()`.
 
 Serializer
 ----------
@@ -146,6 +171,10 @@ Translation
 
 Yaml
 ----
+
+ * Mappings with a colon (`:`) that is not followed by a whitespace are not
+   supported anymore and lead to a `ParseException`(e.g. `foo:bar` must be
+   `foo: bar`).
 
  * Starting an unquoted string with `%` leads to a `ParseException`.
 
@@ -230,6 +259,8 @@ Yaml
  * The `!!php/object` tag to indicate dumped PHP objects was removed in favor of
    the `!php/object` tag.
 
+ * Duplicate mapping keys lead to a `ParseException`.
+
 Validator
 ---------
 
@@ -261,3 +292,7 @@ Validator
        // ...
    }
    ```
+   
+ * The default value of the strict option of the `Choice` Constraint has been
+   changed to `true` as of 4.0. If you need the the previous behaviour ensure to 
+   set the option to `false`.

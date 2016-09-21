@@ -26,12 +26,14 @@ use Symfony\Component\Finder\Finder;
 use Symfony\Component\HttpKernel\DependencyInjection\Extension;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\PropertyAccess\PropertyAccessor;
+use Symfony\Component\Serializer\Encoder\YamlEncoder;
+use Symfony\Component\Serializer\Encoder\CsvEncoder;
 use Symfony\Component\Serializer\Mapping\Factory\CacheClassMetadataFactory;
 use Symfony\Component\Serializer\Normalizer\DataUriNormalizer;
 use Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
 use Symfony\Component\Serializer\Normalizer\JsonSerializableNormalizer;
-use Symfony\Component\Validator\Validation;
 use Symfony\Component\Workflow;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * FrameworkExtension.
@@ -91,6 +93,21 @@ class FrameworkExtension extends Extension
         $container->setParameter('kernel.trusted_proxies', $config['trusted_proxies']);
         $container->setParameter('kernel.default_locale', $config['default_locale']);
 
+        if (!$container->hasParameter('debug.file_link_format')) {
+            if (!$container->hasParameter('templating.helper.code.file_link_format')) {
+                $links = array(
+                    'textmate' => 'txmt://open?url=file://%%f&line=%%l',
+                    'macvim' => 'mvim://open?url=file://%%f&line=%%l',
+                    'emacs' => 'emacs://open?url=file://%%f&line=%%l',
+                    'sublime' => 'subl://open?url=file://%%f&line=%%l',
+                );
+                $ide = $config['ide'];
+
+                $container->setParameter('templating.helper.code.file_link_format', str_replace('%', '%%', ini_get('xdebug.file_link_format') ?: get_cfg_var('xdebug.file_link_format')) ?: (isset($links[$ide]) ? $links[$ide] : $ide));
+            }
+            $container->setParameter('debug.file_link_format', '%templating.helper.code.file_link_format%');
+        }
+
         if (!empty($config['test'])) {
             $loader->load('test.xml');
         }
@@ -121,7 +138,7 @@ class FrameworkExtension extends Extension
         }
 
         if ($this->isConfigEnabled($container, $config['templating'])) {
-            $this->registerTemplatingConfiguration($config['templating'], $config['ide'], $container, $loader);
+            $this->registerTemplatingConfiguration($config['templating'], $container, $loader);
         }
 
         $this->registerValidationConfiguration($config['validation'], $container, $loader);
@@ -132,6 +149,7 @@ class FrameworkExtension extends Extension
         $this->registerProfilerConfiguration($config['profiler'], $container, $loader);
         $this->registerCacheConfiguration($config['cache'], $container);
         $this->registerWorkflowConfiguration($config['workflows'], $container, $loader);
+        $this->registerDebugConfiguration($config['php_errors'], $container, $loader);
 
         if ($this->isConfigEnabled($container, $config['router'])) {
             $this->registerRouterConfiguration($config['router'], $container, $loader);
@@ -148,26 +166,13 @@ class FrameworkExtension extends Extension
             $this->registerPropertyInfoConfiguration($config['property_info'], $container, $loader);
         }
 
-        $loader->load('debug_prod.xml');
-        $definition = $container->findDefinition('debug.debug_handlers_listener');
+        $this->addAnnotatedClassesToCompile(array(
+            '**Bundle\\Controller\\',
+            '**Bundle\\Entity\\',
 
-        if ($container->hasParameter('templating.helper.code.file_link_format')) {
-            $definition->replaceArgument(5, '%templating.helper.code.file_link_format%');
-        }
-
-        if ($container->getParameter('kernel.debug')) {
-            $definition->replaceArgument(2, E_ALL & ~(E_COMPILE_ERROR | E_PARSE | E_ERROR | E_CORE_ERROR | E_RECOVERABLE_ERROR));
-
-            $loader->load('debug.xml');
-
-            // replace the regular event_dispatcher service with the debug one
-            $definition = $container->findDefinition('event_dispatcher');
-            $definition->setPublic(false);
-            $container->setDefinition('debug.event_dispatcher.parent', $definition);
-            $container->setAlias('event_dispatcher', 'debug.event_dispatcher');
-        } else {
-            $definition->replaceArgument(1, null);
-        }
+            // Added explicitly so that we don't rely on the class map being dumped to make it work
+            'Symfony\\Bundle\\FrameworkBundle\\Controller\\Controller',
+        ));
 
         $this->addClassesToCompile(array(
             'Symfony\\Component\\Config\\ConfigCache',
@@ -411,6 +416,43 @@ class FrameworkExtension extends Extension
     }
 
     /**
+     * Loads the debug configuration.
+     *
+     * @param array            $config    A php errors configuration array
+     * @param ContainerBuilder $container A ContainerBuilder instance
+     * @param XmlFileLoader    $loader    An XmlFileLoader instance
+     */
+    private function registerDebugConfiguration(array $config, ContainerBuilder $container, XmlFileLoader $loader)
+    {
+        $loader->load('debug_prod.xml');
+
+        $debug = $container->getParameter('kernel.debug');
+
+        if ($debug) {
+            $loader->load('debug.xml');
+
+            // replace the regular event_dispatcher service with the debug one
+            $definition = $container->findDefinition('event_dispatcher');
+            $definition->setPublic(false);
+            $container->setDefinition('debug.event_dispatcher.parent', $definition);
+            $container->setAlias('event_dispatcher', 'debug.event_dispatcher');
+        }
+
+        $definition = $container->findDefinition('debug.debug_handlers_listener');
+
+        if (!$config['log']) {
+            $definition->replaceArgument(1, null);
+        }
+
+        if (!$config['throw']) {
+            $container->setParameter('debug.error_handler.throw_at', 0);
+        }
+
+        $definition->replaceArgument(4, $debug);
+        $definition->replaceArgument(6, $debug);
+    }
+
+    /**
      * Loads the router configuration.
      *
      * @param array            $config    A router configuration array
@@ -524,24 +566,12 @@ class FrameworkExtension extends Extension
      * Loads the templating configuration.
      *
      * @param array            $config    A templating configuration array
-     * @param string           $ide
      * @param ContainerBuilder $container A ContainerBuilder instance
      * @param XmlFileLoader    $loader    An XmlFileLoader instance
      */
-    private function registerTemplatingConfiguration(array $config, $ide, ContainerBuilder $container, XmlFileLoader $loader)
+    private function registerTemplatingConfiguration(array $config, ContainerBuilder $container, XmlFileLoader $loader)
     {
         $loader->load('templating.xml');
-
-        if (!$container->hasParameter('templating.helper.code.file_link_format')) {
-            $links = array(
-                'textmate' => 'txmt://open?url=file://%%f&line=%%l',
-                'macvim' => 'mvim://open?url=file://%%f&line=%%l',
-                'emacs' => 'emacs://open?url=file://%%f&line=%%l',
-                'sublime' => 'subl://open?url=file://%%f&line=%%l',
-            );
-
-            $container->setParameter('templating.helper.code.file_link_format', str_replace('%', '%%', ini_get('xdebug.file_link_format') ?: get_cfg_var('xdebug.file_link_format')) ?: (isset($links[$ide]) ? $links[$ide] : $ide));
-        }
 
         $container->setParameter('fragment.renderer.hinclude.global_template', $config['hinclude_default_template']);
 
@@ -851,13 +881,17 @@ class FrameworkExtension extends Extension
             }
         }
 
-        if (!$container->getParameter('kernel.debug')) {
+        if (isset($config['cache']) && $config['cache']) {
+            @trigger_error('The "framework.validation.cache" option is deprecated since Symfony 3.2 and will be removed in 4.0. Configure the "cache.validator" service under "framework.cache.pools" instead.', E_USER_DEPRECATED);
+
             $container->setParameter(
                 'validator.mapping.cache.prefix',
                 'validator_'.$this->getKernelRootHash($container)
             );
 
             $validatorBuilder->addMethodCall('setMetadataCache', array(new Reference($config['cache'])));
+        } elseif (!$container->getParameter('kernel.debug')) {
+            $validatorBuilder->addMethodCall('setMetadataCache', array(new Reference('validator.mapping.cache.symfony')));
         }
     }
 
@@ -906,8 +940,22 @@ class FrameworkExtension extends Extension
         $loader->load('annotations.xml');
 
         if ('none' !== $config['cache']) {
-            if ('file' === $config['cache']) {
+            $cacheService = $config['cache'];
+
+            if ('php_array' === $config['cache']) {
+                $cacheService = 'annotations.cache';
+
+                // Enable warmer only if PHP array is used for cache
+                $definition = $container->findDefinition('annotations.cache_warmer');
+                $definition->addTag('kernel.cache_warmer');
+
+                $this->addClassesToCompile(array(
+                    'Symfony\Component\Cache\Adapter\PhpArrayAdapter',
+                    'Symfony\Component\Cache\DoctrineProvider',
+                ));
+            } elseif ('file' === $config['cache']) {
                 $cacheDir = $container->getParameterBag()->resolveValue($config['file_cache_dir']);
+
                 if (!is_dir($cacheDir) && false === @mkdir($cacheDir, 0777, true) && !is_dir($cacheDir)) {
                     throw new \RuntimeException(sprintf('Could not create cache directory "%s".', $cacheDir));
                 }
@@ -916,11 +964,13 @@ class FrameworkExtension extends Extension
                     ->getDefinition('annotations.filesystem_cache')
                     ->replaceArgument(0, $cacheDir)
                 ;
+
+                $cacheService = 'annotations.filesystem_cache';
             }
 
             $container
                 ->getDefinition('annotations.cached_reader')
-                ->replaceArgument(1, new Reference('file' !== $config['cache'] ? $config['cache'] : 'annotations.filesystem_cache'))
+                ->replaceArgument(1, new Reference($cacheService))
                 ->replaceArgument(2, $config['debug'])
                 ->addAutowiringType(Reader::class)
             ;
@@ -990,6 +1040,18 @@ class FrameworkExtension extends Extension
             $definition->addTag('serializer.normalizer', array('priority' => -900));
         }
 
+        if (class_exists(YamlEncoder::class) && defined('Symfony\Component\Yaml\Yaml::DUMP_OBJECT')) {
+            $definition = $container->register('serializer.encoder.yaml', YamlEncoder::class);
+            $definition->setPublic(false);
+            $definition->addTag('serializer.encoder');
+        }
+
+        if (class_exists(CsvEncoder::class)) {
+            $definition = $container->register('serializer.encoder.csv', CsvEncoder::class);
+            $definition->setPublic(false);
+            $definition->addTag('serializer.encoder');
+        }
+
         $loader->load('serializer.xml');
         $chainLoader = $container->getDefinition('serializer.mapping.chain_loader');
 
@@ -1044,6 +1106,7 @@ class FrameworkExtension extends Extension
         }
 
         $chainLoader->replaceArgument(0, $serializerLoaders);
+        $container->getDefinition('serializer.mapping.cache_warmer')->replaceArgument(0, $serializerLoaders);
 
         if (isset($config['cache']) && $config['cache']) {
             @trigger_error('The "framework.serializer.cache" option is deprecated since Symfony 3.1 and will be removed in 4.0. Configure the "cache.serializer" service under "framework.cache.pools" instead.', E_USER_DEPRECATED);
@@ -1056,12 +1119,12 @@ class FrameworkExtension extends Extension
             $container->getDefinition('serializer.mapping.class_metadata_factory')->replaceArgument(
                 1, new Reference($config['cache'])
             );
-        } elseif (!$container->getParameter('kernel.debug')) {
+        } elseif (!$container->getParameter('kernel.debug') && class_exists(CacheClassMetadataFactory::class)) {
             $cacheMetadataFactory = new Definition(
                 CacheClassMetadataFactory::class,
                 array(
                     new Reference('serializer.mapping.cache_class_metadata_factory.inner'),
-                    new Reference('cache.serializer'),
+                    new Reference('serializer.mapping.cache.symfony'),
                 )
             );
             $cacheMetadataFactory->setPublic(false);
@@ -1130,10 +1193,8 @@ class FrameworkExtension extends Extension
         }
 
         $this->addClassesToCompile(array(
-            'Psr\Cache\CacheItemInterface',
-            'Psr\Cache\CacheItemPoolInterface',
-            'Symfony\Component\Cache\Adapter\AdapterInterface',
-            'Symfony\Component\Cache\Adapter\AbstractAdapter',
+            'Symfony\Component\Cache\Adapter\ApcuAdapter',
+            'Symfony\Component\Cache\Adapter\FilesystemAdapter',
             'Symfony\Component\Cache\CacheItem',
         ));
     }

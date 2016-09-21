@@ -285,6 +285,8 @@ class Filesystem
      *
      * @param string $filename Path to the file
      *
+     * @return bool
+     *
      * @throws IOException When windows path is longer than 258 characters
      */
     private function isReadable($filename)
@@ -381,6 +383,47 @@ class Filesystem
             }
         }
         throw new IOException(sprintf('Failed to create %s link from "%s" to "%s".', $linkType, $origin, $target), 0, null, $target);
+    }
+
+    /**
+     * Resolves links in paths.
+     *
+     * With $canonicalize = false (default)
+     *      - if $path does not exist or is not a link, returns null
+     *      - if $path is a link, returns the next direct target of the link without considering the existence of the target
+     *
+     * With $canonicalize = true
+     *      - if $path does not exist, returns null
+     *      - if $path exists, returns its absolute fully resolved final version
+     *
+     * @param string $path         A filesystem path
+     * @param bool   $canonicalize Whether or not to return a canonicalized path
+     *
+     * @return string|null
+     */
+    public function readlink($path, $canonicalize = false)
+    {
+        if (!$canonicalize && !is_link($path)) {
+            return;
+        }
+
+        if ($canonicalize) {
+            if (!$this->exists($path)) {
+                return;
+            }
+
+            if ('\\' === DIRECTORY_SEPARATOR) {
+                $path = readlink($path);
+            }
+
+            return realpath($path);
+        }
+
+        if ('\\' === DIRECTORY_SEPARATOR) {
+            return realpath($path);
+        }
+
+        return readlink($path);
     }
 
     /**
@@ -597,8 +640,7 @@ class Filesystem
             throw new IOException(sprintf('Failed to write file "%s".', $filename), 0, null, $filename);
         }
 
-        // Ignore for filesystems that do not support umask
-        @chmod($tmpFile, 0666);
+        @chmod($tmpFile, 0666 & ~umask());
         $this->rename($tmpFile, $filename, true);
     }
 

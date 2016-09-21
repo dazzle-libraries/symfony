@@ -38,8 +38,37 @@ Form
 FrameworkBundle
 ---------------
 
-  * The service `serializer.mapping.cache.doctrine.apc` is deprecated. APCu should now
-    be automatically used when available.
+ * The service `serializer.mapping.cache.doctrine.apc` is deprecated. APCu should now
+   be automatically used when available.
+
+HttpKernel
+----------
+
+ * `DataCollector::varToString()` is deprecated and will be removed in Symfony
+   4.0. Use the `cloneVar()` method instead.
+
+HttpFoundation
+---------------
+
+  * Extending the following methods of `Response`
+    is deprecated (these methods will be `final` in 4.0):
+
+     - `setDate`/`getDate`
+     - `setExpires`/`getExpires`
+     - `setLastModified`/`getLastModified`
+     - `setProtocolVersion`/`getProtocolVersion`
+     - `setStatusCode`/`getStatusCode`
+     - `setCharset`/`getCharset`
+     - `setPrivate`/`setPublic`
+     - `getAge`
+     - `getMaxAge`/`setMaxAge`
+     - `setSharedMaxAge`
+     - `getTtl`/`setTtl`
+     - `setClientTtl`
+     - `getEtag`/`setEtag`
+     - `hasVary`/`getVary`/`setVary`
+     - `isInvalid`/`isSuccessful`/`isRedirection`/`isClientError`/`isServerError`
+     - `isOk`/`isForbidden`/`isNotFound`/`isRedirect`/`isEmpty`
 
 Validator
 ---------
@@ -70,3 +99,29 @@ Validator
        // ...
    }
    ```
+
+ * Setting the strict option of the `Choice` Constraint to `false` has been
+   deprecated and the option will be changed to `true` as of 4.0.
+
+   ```php
+   // ...
+   use Symfony\Component\Validator\Constraints as Assert;
+
+   class MyEntity
+   {
+       /**
+        * @Assert\Choice(choices={"MR", "MRS"}, strict=true)
+        */
+       private $salutation;
+   }
+   ```
+
+Yaml
+----
+
+ * Support for silently ignoring duplicate mapping keys in YAML has been
+   deprecated and will lead to a `ParseException` in Symfony 4.0.
+
+ * Mappings with a colon (`:`) that is not followed by a whitespace are deprecated
+   and will lead to a `ParseException` in Symfony 4.0 (e.g. `foo:bar` must be
+   `foo: bar`).

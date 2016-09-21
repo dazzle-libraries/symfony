@@ -11,11 +11,12 @@
 
 namespace Symfony\Component\DependencyInjection;
 
+use Symfony\Component\DependencyInjection\Exception\EnvNotFoundException;
 use Symfony\Component\DependencyInjection\Exception\InvalidArgumentException;
 use Symfony\Component\DependencyInjection\Exception\ServiceNotFoundException;
 use Symfony\Component\DependencyInjection\Exception\ServiceCircularReferenceException;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
-use Symfony\Component\DependencyInjection\ParameterBag\ParameterBag;
+use Symfony\Component\DependencyInjection\ParameterBag\EnvPlaceholderParameterBag;
 use Symfony\Component\DependencyInjection\ParameterBag\FrozenParameterBag;
 
 /**
@@ -70,13 +71,14 @@ class Container implements ResettableContainerInterface
     protected $loading = array();
 
     private $underscoreMap = array('_' => '', '.' => '_', '\\' => '_');
+    private $envCache = array();
 
     /**
      * @param ParameterBagInterface $parameterBag A ParameterBagInterface instance
      */
     public function __construct(ParameterBagInterface $parameterBag = null)
     {
-        $this->parameterBag = $parameterBag ?: new ParameterBag();
+        $this->parameterBag = $parameterBag ?: new EnvPlaceholderParameterBag();
     }
 
     /**
@@ -181,6 +183,7 @@ class Container implements ResettableContainerInterface
         if (isset($this->privates[$id])) {
             if (null === $service) {
                 @trigger_error(sprintf('Unsetting the "%s" private service is deprecated since Symfony 3.2 and won\'t be supported anymore in Symfony 4.0.', $id), E_USER_DEPRECATED);
+                unset($this->privates[$id]);
             } else {
                 @trigger_error(sprintf('Setting the "%s" private service is deprecated since Symfony 3.2 and won\'t be supported anymore in Symfony 4.0. A new public service will be created instead.', $id), E_USER_DEPRECATED);
             }
@@ -200,7 +203,6 @@ class Container implements ResettableContainerInterface
             if ('service_container' === $id
                 || isset($this->aliases[$id])
                 || isset($this->services[$id])
-                || array_key_exists($id, $this->services)
             ) {
                 return true;
             }
@@ -247,7 +249,7 @@ class Container implements ResettableContainerInterface
                 $id = $this->aliases[$id];
             }
             // Re-use shared service instance if it exists.
-            if (isset($this->services[$id]) || array_key_exists($id, $this->services)) {
+            if (isset($this->services[$id])) {
                 return $this->services[$id];
             }
 
@@ -269,10 +271,10 @@ class Container implements ResettableContainerInterface
                     }
 
                     $alternatives = array();
-                    foreach ($this->services as $key => $associatedService) {
-                        $lev = levenshtein($id, $key);
-                        if ($lev <= strlen($id) / 3 || false !== strpos($key, $id)) {
-                            $alternatives[] = $key;
+                    foreach ($this->getServiceIds() as $knownId) {
+                        $lev = levenshtein($id, $knownId);
+                        if ($lev <= strlen($id) / 3 || false !== strpos($knownId, $id)) {
+                            $alternatives[] = $knownId;
                         }
                     }
 
@@ -320,7 +322,7 @@ class Container implements ResettableContainerInterface
             $id = $this->aliases[$id];
         }
 
-        return isset($this->services[$id]) || array_key_exists($id, $this->services);
+        return isset($this->services[$id]);
     }
 
     /**
@@ -371,6 +373,33 @@ class Container implements ResettableContainerInterface
     public static function underscore($id)
     {
         return strtolower(preg_replace(array('/([A-Z]+)([A-Z][a-z])/', '/([a-z\d])([A-Z])/'), array('\\1_\\2', '\\1_\\2'), str_replace('_', '.', $id)));
+    }
+
+    /**
+     * Fetches a variable from the environment.
+     *
+     * @param string The name of the environment variable
+     *
+     * @return scalar The value to use for the provided environment variable name
+     *
+     * @throws EnvNotFoundException When the environment variable is not found and has no default value
+     */
+    protected function getEnv($name)
+    {
+        if (isset($this->envCache[$name]) || array_key_exists($name, $this->envCache)) {
+            return $this->envCache[$name];
+        }
+        if (isset($_ENV[$name])) {
+            return $this->envCache[$name] = $_ENV[$name];
+        }
+        if (false !== $env = getenv($name)) {
+            return $this->envCache[$name] = $env;
+        }
+        if (!$this->hasParameter("env($name)")) {
+            throw new EnvNotFoundException($name);
+        }
+
+        return $this->envCache[$name] = $this->getParameter("env($name)");
     }
 
     private function __clone()
